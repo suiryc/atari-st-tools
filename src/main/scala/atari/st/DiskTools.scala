@@ -18,7 +18,7 @@ object DiskTools extends App {
 
   object AppMode extends Enumeration {
     val test = Value
-    val showDuplicates = Value
+    val inspect = Value
     val deduplicate = Value
   }
 
@@ -28,6 +28,7 @@ object DiskTools extends App {
     dryRun: Boolean = false,
     mode: AppMode.Value = AppMode.test,
     output: Path = null,
+    showUnique: Boolean = false,
     sources: List[Path] = Nil,
     verbose: Int = 0,
     warnUnknownFormat: Boolean = false,
@@ -69,11 +70,14 @@ object DiskTools extends App {
       c.copy(mode = AppMode.test)
     }
 
-    cmd("show-duplicates") text("show duplicates") action { (_, c) =>
-      c.copy(mode = AppMode.showDuplicates)
+    cmd("inspect") text("inspect disks") action { (_, c) =>
+      c.copy(mode = AppMode.inspect)
     } children(
-      opt[Unit]("by-name") text("by name") action { (_, c) =>
+      opt[Unit]("by-name") text("also show duplicates by name") action { (_, c) =>
         c.copy(byName = true)
+      },
+      opt[Unit]("show-unique") text("show unique disks") action { (_, c) =>
+        c.copy(showUnique = true)
       }
     )
 
@@ -98,8 +102,8 @@ object DiskTools extends App {
     case AppMode.test =>
       test()
 
-    case AppMode.showDuplicates =>
-      showDuplicates()
+    case AppMode.inspect =>
+      inspect()
 
     case AppMode.deduplicate =>
       deduplicate()
@@ -201,16 +205,22 @@ object DiskTools extends App {
     else Duplicates(duplicates.head, Nil, Nil)
   }
 
-  def showDuplicates() {
-    def showDuplicates(map: mutable.Map[String, List[Disk]]) {
+  def inspect() {
+    def inspect(map: mutable.Map[String, List[Disk]]) {
       map.toList sortBy(_._2.head.info.name.toLowerCase()) foreach { tuple =>
         val duplicates = sortDuplicates(tuple._2)
         val preferred = duplicates.preferred
         val unknownFormat = preferred.info.format.isInstanceOf[UnknownDiskFormat]
 
-        if (!duplicates.others.isEmpty || !duplicates.excluded.isEmpty || (unknownFormat && options.warnUnknownFormat)) {
-          println(s"Name: ${preferred.info.name}")
-          println(s"  Preferred: ${preferred.info}")
+        if (!duplicates.others.isEmpty || !duplicates.excluded.isEmpty ||
+          (unknownFormat && options.warnUnknownFormat) || options.showUnique)
+        {
+          if (duplicates.others.isEmpty && duplicates.excluded.isEmpty)
+            println(s"Name: ${preferred.info.name}; Image: ${preferred.info}")
+          else {
+            println(s"Name: ${preferred.info.name}")
+            println(s"  Preferred: ${preferred.info}")
+          }
           if (options.warnUnknownFormat && unknownFormat)
             println("  WARNING! Unknown disk format")
           if (!duplicates.others.isEmpty)
@@ -225,14 +235,14 @@ object DiskTools extends App {
 
     if (options.byName) {
       println("")
-      println("Duplicates by name")
-      showDuplicates(diskNames)
+      println("Disks by name")
+      inspect(diskNames)
       println("")
     }
 
     println("")
-    println("Duplicates by checksum")
-    showDuplicates(diskChecksums)
+    println("Disks by checksum")
+    inspect(diskChecksums)
     println("")
   }
 
