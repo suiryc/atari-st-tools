@@ -1,5 +1,6 @@
 package atari.st.disk
 
+import atari.st.disk.exceptions.NoDiskInZipException
 import java.io.{BufferedInputStream, FileInputStream, InputStream}
 import java.nio.charset.Charset
 import java.nio.file.Path
@@ -26,7 +27,10 @@ object DiskInfo {
     kind match {
       case DiskType.ST =>
         try {
-          Right(DiskInfo(path, name, kind, DiskFormat(size), computeChecksum(input)))
+          val data = DiskImage.loadImage(input, size)
+          val format = DiskImage.readDiskFormat(data)
+          val imageStream = DiskImage.dataToStream(data) 
+          Right(DiskInfo(path, name, kind, format, computeChecksum(imageStream)))
         }
         catch {
           case ex: Exception =>
@@ -36,7 +40,7 @@ object DiskInfo {
       case DiskType.MSA =>
         try {
           val msa = new MSADisk(input)
-          Right(DiskInfo(path, name, kind, DiskFormat(msa.tracks, msa.sectors, msa.sides), computeChecksum(msa.filtered)))
+          Right(DiskInfo(path, name, kind, DiskFormat(msa.sectors, msa.tracks, msa.sectorsPerTrack, msa.sides), computeChecksum(msa.filtered)))
         }
         catch {
           case ex: Exception =>

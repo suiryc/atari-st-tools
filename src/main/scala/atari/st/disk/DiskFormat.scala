@@ -3,38 +3,37 @@ package atari.st.disk
 
 abstract class DiskFormat(val size: Int)
 
-case class StandardDiskFormat(tracks: Int, sectors: Int, sides: Int)
-extends DiskFormat(tracks * sectors * sides * DiskFormat.sectorsPerTrack)
+case class StandardDiskFormat(sectors: Int, tracks: Int, sectorsPerTrack: Int, sides: Int)
+extends DiskFormat(sectors * DiskFormat.bytesPerSector)
 
 case class UnknownDiskFormat(override val size: Int)
 extends DiskFormat(size)
 
 object DiskFormat {
 
-  val sectorsPerTrack = 512
+  val bytesPerSector = 512
 
   /* sensible max number of tracks when guessing format from size */
-  protected val maxTracks = 83
-  /* Possible number of sectors, in preference order */
-  protected val probeSectors = List(9, 10, 11, 8, 12)
+  protected val maxTracks = 84
+  /* Possible number of sectors per track, in preference order */
+  protected val probeSectorsPerTrack = List(9, 10, 11, 8, 12)
   /* Most sensible number of tracks, no specific order */
   protected val probeTracks = 78 to maxTracks
 
-  def apply(tracks: Int, sectors: Int, sides: Int): StandardDiskFormat =
-    StandardDiskFormat(tracks, sectors, sides)
+  def apply(sectors: Int, tracks: Int, sectorsPerTrack: Int, sides: Int): StandardDiskFormat =
+    StandardDiskFormat(sectors, tracks, sectorsPerTrack, sides)
 
   def apply(size: Int): DiskFormat = {
-    /* 512 bytes per sector */
-    if (size % 512 != 0) new UnknownDiskFormat(size)
+    if (size % bytesPerSector != 0) new UnknownDiskFormat(size)
     else {
-      val size2 = size / 512
-      /* First find possible sectors count */
-      val candidates = probeSectors filter(size2 % _ == 0) map { sectors =>
-        val size3 = size2 / sectors
+      val sectors = size / bytesPerSector
+      /* First find possible sectors per track */
+      val candidates = probeSectorsPerTrack filter(sectors % _ == 0) map { sectorsPerTrack =>
+        val tracks = sectors / sectorsPerTrack
         /* Consider single-sided if number of tracks is acceptable */
-        if (size3 <= maxTracks) Some(DiskFormat(size3, sectors, 1))
+        if (tracks <= maxTracks) Some(DiskFormat(sectors, tracks, sectorsPerTrack, 1))
         /* Consider double-sided if sensible */
-        else if ((size3 % 2 == 0) && (size3 / 2 <= maxTracks)) Some(DiskFormat(size3 / 2, sectors, 2))
+        else if ((tracks % 2 == 0) && (tracks / 2 <= maxTracks)) Some(DiskFormat(sectors, tracks / 2, sectorsPerTrack, 2))
         /* Else drop this sectors count */
         else None
       }

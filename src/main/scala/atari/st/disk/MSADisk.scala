@@ -1,5 +1,6 @@
 package atari.st.disk
 
+import atari.st.disk.exceptions.InvalidFormatException
 import java.io.{DataInputStream, FilterInputStream, InputStream}
 
 
@@ -10,12 +11,13 @@ class MSADisk(input: InputStream) {
   if (dis.readUnsignedShort() != 0x0E0F)
     throw new InvalidFormatException("Invalid magic number")
 
-  val sectors = dis.readUnsignedShort()
-  protected val trackSize = sectors * 512
+  val sectorsPerTrack = dis.readUnsignedShort()
+  protected val trackSize = sectorsPerTrack * 512
   val sides = dis.readUnsignedShort() + 1
   val trackStart = dis.readUnsignedShort()
   val trackEnd = dis.readUnsignedShort()
   val tracks = trackEnd - trackStart + 1
+  val sectors = sectorsPerTrack * tracks * sides
 
   val filtered = new FilterInputStream(dis) {
 

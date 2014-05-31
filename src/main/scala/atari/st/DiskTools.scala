@@ -1,11 +1,7 @@
 package atari.st
 
-import atari.st.disk.{
-  DiskFormat,
-  DiskInfo,
-  NoDiskInZipException,
-  UnknownDiskFormat
-}
+import atari.st.disk.{DiskFormat, DiskInfo, UnknownDiskFormat}
+import atari.st.disk.exceptions.NoDiskInZipException
 import java.nio.charset.{Charset, StandardCharsets}
 import java.nio.file.{Files, Path, Paths}
 import scala.collection.mutable
@@ -60,7 +56,7 @@ object DiskTools extends App {
     opt[String]("zip-allowed-extra") text("allowed extra zip entries name") action { (v, c) =>
       c.copy(zipAllowedExtra = Some(v.r))
     }
-    opt[String]("zip-charset") text("zip entries charset (if not UTF8)") minOccurs(
+    val zipCharset = opt[String]("zip-charset") text("zip entries charset (if not UTF8)") minOccurs(
       if (Charset.defaultCharset().compareTo(StandardCharsets.UTF_8) == 0) 1 else 0
     ) action { (v, c) =>
       c.copy(zipCharset = Charset.forName(v))
@@ -78,7 +74,8 @@ object DiskTools extends App {
       },
       opt[Unit]("show-unique") text("show unique disks") action { (_, c) =>
         c.copy(showUnique = true)
-      }
+      },
+      zipCharset
     )
 
     cmd("deduplicate") text("deduplicate") action { (_, c) =>
@@ -92,7 +89,8 @@ object DiskTools extends App {
       },
       opt[String]("output") text("output path") required() action { (v, c) =>
         c.copy(output = Paths.get(v))
-      }
+      },
+      zipCharset
     )
   }
 
@@ -112,10 +110,15 @@ object DiskTools extends App {
 
   def test() {
     for (sides <- 1 to 2) {
-      for (tracks <- 78 to 82) {
-        for (sectors <- 8 to 11) {
-          val format = DiskFormat(tracks, sectors, sides)
-          println(s"${DiskFormat(format.size)}: ${format.size / 1024}")
+      for (tracks <- 78 to 84) {
+        for (sectorsPerTrack <- 8 to 12) {
+          val sectors = sectorsPerTrack * tracks * sides
+          val format = DiskFormat(sectors, tracks, sectorsPerTrack, sides)
+          val guessed = DiskFormat(format.size)
+          if (format == guessed)
+            println(s"${format.size / 1024}kiB: ${guessed}")
+          else
+            println(s"Wrong guess $guessed, expected format")
         }
       }
     }
@@ -134,10 +137,18 @@ object DiskTools extends App {
 
   def findDuplicates() {
     options.sources foreach { root =>
-      println(s"Searching for files in ${root} ...")
-      val finder = PathFinder(root) ** """(?i).*\.(?:st|msa|zip)""".r
-      val files = finder.get().toList
-      println(s"Processing files in ${root} ...")
+      val files =
+        if (Files.isDirectory(root)) {
+          println(s"Searching for files in ${root} ...")
+          val finder = PathFinder(root) ** """(?i).*\.(?:st|msa|zip)""".r
+          val files = finder.get().toList
+          println(s"Processing files in ${root} ...")
+          files
+        }
+        else {
+          println(s"Processing ${root} ...")
+          List(root.toFile)
+        }
       files sortBy(_.toString.toLowerCase) map(_.toPath) foreach { path =>
         DiskInfo(path, options.zipCharset, options.zipAllowedExtra).fold ({ ex =>
           ex match {
