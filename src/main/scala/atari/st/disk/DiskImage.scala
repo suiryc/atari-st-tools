@@ -8,6 +8,19 @@ import atari.st.disk.exceptions.{
 import java.io.{ByteArrayInputStream, InputStream}
 
 
+case class BootSector(
+  bytesPerSector: Int,
+  sectors: Int,
+  sectorsPerTrack: Int,
+  sides: Int
+) {
+
+  val tracks =
+    if ((sectorsPerTrack <= 0) || (sides <= 0)) -1
+    else sectors / (sectorsPerTrack * sides)
+
+}
+
 class DiskImage(val data: Array[Byte], val info: DiskInfo) {
 
   def inputStream =
@@ -35,7 +48,7 @@ object DiskImage {
     data
   }
 
-  def readDiskFormat(data: Array[Byte]): DiskFormat = {
+  def readBootSector(data: Array[Byte]): BootSector = {
     /* Some details: http://info-coach.fr/atari/software/FD-Soft.php */
 
     /* Boot sector is the first */
@@ -53,16 +66,7 @@ object DiskImage {
     val sides = ProtocolStream.readInteger(input, BitSize.Short).intValue()
     input.close()
 
-    if (sectors * DiskFormat.bytesPerSector != data.length) {
-      /* Either boot sector has wrong info, or image is not complete.
-       * In both cases, try to guess.
-       */
-      DiskFormat(data.length)
-    }
-    else {
-      val tracks = sectors / (sectorsPerTrack * sides)
-      DiskFormat(sectors, tracks, sectorsPerTrack, sides)
-    }
+    BootSector(bytesPerSector, sectors, sectorsPerTrack, sides)
   }
 
   def dataToStream(data: Array[Byte]) =

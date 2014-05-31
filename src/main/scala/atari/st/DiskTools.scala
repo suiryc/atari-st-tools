@@ -1,6 +1,11 @@
 package atari.st
 
-import atari.st.disk.{DiskFormat, DiskInfo, UnknownDiskFormat}
+import atari.st.disk.{
+  DiskFormat,
+  DiskInfo,
+  StandardDiskFormat,
+  UnknownDiskFormat
+}
 import atari.st.disk.exceptions.NoDiskInZipException
 import java.nio.charset.{Charset, StandardCharsets}
 import java.nio.file.{Files, Path, Paths}
@@ -20,10 +25,12 @@ object DiskTools extends App {
 
   case class AppOptions(
     allowByName: Boolean = false,
+    checkBootSector: Boolean = false,
     byName: Boolean = false,
     dryRun: Boolean = false,
     mode: AppMode.Value = AppMode.test,
     output: Path = null,
+    showDuplicates: Boolean = false,
     showUnique: Boolean = false,
     sources: List[Path] = Nil,
     verbose: Int = 0,
@@ -44,6 +51,9 @@ object DiskTools extends App {
 
   val parser = new scopt.OptionParser[AppOptions]("TestST") {
     help("help") text("print help")
+    val zipCharset = () => opt[Unit]("check-boot-sector") text("check boot sector") action { (_, c) =>
+      c.copy(checkBootSector = true)
+    }
     opt[String]("source") text("source path") unbounded() action { (v, c) =>
       c.copy(sources = c.sources :+ Paths.get(v))
     }
@@ -56,7 +66,7 @@ object DiskTools extends App {
     opt[String]("zip-allowed-extra") text("allowed extra zip entries name") action { (v, c) =>
       c.copy(zipAllowedExtra = Some(v.r))
     }
-    val zipCharset = () => opt[String]("zip-charset") text("zip entries charset (if not UTF8)") minOccurs(
+    val checkBootSector = () => opt[String]("zip-charset") text("zip entries charset (if not UTF8)") minOccurs(
       if (Charset.defaultCharset().compareTo(StandardCharsets.UTF_8) == 0) 1 else 0
     ) action { (v, c) =>
       c.copy(zipCharset = Charset.forName(v))
@@ -72,6 +82,10 @@ object DiskTools extends App {
       opt[Unit]("by-name") text("also show duplicates by name") action { (_, c) =>
         c.copy(byName = true)
       },
+      checkBootSector(),
+      opt[Unit]("show-duplicates") text("show duplicate disks") action { (_, c) =>
+        c.copy(showDuplicates = true)
+      },
       opt[Unit]("show-unique") text("show unique disks") action { (_, c) =>
         c.copy(showUnique = true)
       },
@@ -84,6 +98,7 @@ object DiskTools extends App {
       opt[Unit]("allow-by-name") text("allow duplicates by name (but not by checksum)") action { (_, c) =>
         c.copy(allowByName = true)
       },
+      checkBootSector(),
       opt[Unit]("dry-run") text("do not modify sources") action { (_, c) =>
         c.copy(dryRun = true)
       },
@@ -216,15 +231,37 @@ object DiskTools extends App {
     else Duplicates(duplicates.head, Nil, Nil)
   }
 
+  def checkFormat(info: DiskInfo) {
+    info.format match {
+      case format: UnknownDiskFormat =>
+        if (options.warnUnknownFormat || options.checkBootSector)
+          println(s"WARNING! Disk[${info.name}] image[${info.path}] has unknown format: ${format}")
+
+      case format: StandardDiskFormat =>
+        val bootSector = info.bootSector
+        if (options.checkBootSector) {
+          if ((bootSector.sectorsPerTrack != format.sectorsPerTrack) ||
+            (bootSector.tracks != format.tracks) ||
+            (bootSector.sides != format.sides))
+          {
+            println(s"WARNING! Disk[${info.name}] image[${info.path}] boot sector[${bootSector}] does not match format[${format}]")
+          }
+        }
+    }
+  }
+
   def inspect() {
     def inspect(map: mutable.Map[String, List[Disk]]) {
       map.toList sortBy(_._2.head.info.name.toLowerCase()) foreach { tuple =>
         val duplicates = sortDuplicates(tuple._2)
         val preferred = duplicates.preferred
-        val unknownFormat = preferred.info.format.isInstanceOf[UnknownDiskFormat]
 
-        if (!duplicates.others.isEmpty || !duplicates.excluded.isEmpty ||
-          (unknownFormat && options.warnUnknownFormat) || options.showUnique)
+        checkFormat(preferred.info)
+        for (dup <- duplicates.others ::: duplicates.excluded)
+          checkFormat(dup.info)
+
+        if ((options.showDuplicates && (!duplicates.others.isEmpty || !duplicates.excluded.isEmpty)) ||
+          options.showUnique)
         {
           if (duplicates.others.isEmpty && duplicates.excluded.isEmpty)
             println(s"Name: ${preferred.info.name}; Image: ${preferred.info}")
@@ -232,8 +269,6 @@ object DiskTools extends App {
             println(s"Name: ${preferred.info.name}")
             println(s"  Preferred: ${preferred.info}")
           }
-          if (options.warnUnknownFormat && unknownFormat)
-            println("  WARNING! Unknown disk format")
           if (!duplicates.others.isEmpty)
             println(s"  Duplicates: ${duplicates.others.map(_.info.path)}")
           if (!duplicates.excluded.isEmpty)
@@ -283,7 +318,6 @@ object DiskTools extends App {
     diskChecksums.toList sortBy(_._2.head.info.name.toLowerCase()) foreach { tuple =>
       val duplicates = sortDuplicates(tuple._2)
       val preferred = duplicates.preferred
-      val unknownFormat = preferred.info.format.isInstanceOf[UnknownDiskFormat]
 
       val unsureDups =
         if (options.allowByName) Nil
@@ -299,14 +333,16 @@ object DiskTools extends App {
           } groupBy(_.info.path) map(_._2.head.info)
         }
 
-      if (duplicates.others.isEmpty && duplicates.excluded.isEmpty && unsureDups.isEmpty && (!unknownFormat || !options.warnUnknownFormat))
+      checkFormat(preferred.info)
+      for (dup <- duplicates.others ::: duplicates.excluded)
+        checkFormat(dup.info)
+
+      if (duplicates.others.isEmpty && duplicates.excluded.isEmpty && unsureDups.isEmpty)
         println(s"Name: ${preferred.info.name}; Path: ${preferred.info.path}")
       else {
         println(s"Name: ${preferred.info.name}")
         println(s"  Preferred: ${preferred.info}")
       }
-      if (options.warnUnknownFormat && preferred.info.format.isInstanceOf[UnknownDiskFormat])
-        println("  WARNING! Unknown disk format")
       if (!duplicates.others.isEmpty)
         println(s"  Duplicates: ${duplicates.others.map(_.info.path)}")
       if (!duplicates.excluded.isEmpty)

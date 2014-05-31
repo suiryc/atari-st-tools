@@ -23,6 +23,17 @@ object DiskFormat {
   def apply(sectors: Int, tracks: Int, sectorsPerTrack: Int, sides: Int): StandardDiskFormat =
     StandardDiskFormat(sectors, tracks, sectorsPerTrack, sides)
 
+  def apply(bootSector: BootSector, size: Int): DiskFormat =
+    if (bootSector.sectors * DiskFormat.bytesPerSector != size) {
+      /* Either boot sector has wrong info, or image is not complete.
+       * In both cases, try to guess.
+       */
+      DiskFormat(size)
+    }
+    else {
+      DiskFormat(bootSector.sectors, bootSector.tracks, bootSector.sectorsPerTrack, bootSector.sides)
+    }
+
   def apply(size: Int): DiskFormat = {
     if (size % bytesPerSector != 0) new UnknownDiskFormat(size)
     else {

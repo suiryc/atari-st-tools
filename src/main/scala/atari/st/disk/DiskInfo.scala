@@ -19,7 +19,7 @@ object DiskType extends Enumeration {
 }
 
 
-case class DiskInfo(path: Path, name: String, kind: DiskType.Value, format: DiskFormat, checksum: String)
+case class DiskInfo(path: Path, name: String, kind: DiskType.Value, format: DiskFormat, checksum: String, bootSector: BootSector)
 
 object DiskInfo {
 
@@ -28,9 +28,10 @@ object DiskInfo {
       case DiskType.ST =>
         try {
           val data = DiskImage.loadImage(input, size)
-          val format = DiskImage.readDiskFormat(data)
-          val imageStream = DiskImage.dataToStream(data) 
-          Right(DiskInfo(path, name, kind, format, computeChecksum(imageStream)))
+          val bootSector = DiskImage.readBootSector(data)
+          val format = DiskFormat(bootSector, size)
+          val imageStream = DiskImage.dataToStream(data)
+          Right(DiskInfo(path, name, kind, format, computeChecksum(imageStream), bootSector))
         }
         catch {
           case ex: Exception =>
@@ -40,7 +41,10 @@ object DiskInfo {
       case DiskType.MSA =>
         try {
           val msa = new MSADisk(input)
-          Right(DiskInfo(path, name, kind, DiskFormat(msa.sectors, msa.tracks, msa.sectorsPerTrack, msa.sides), computeChecksum(msa.filtered)))
+          val data = DiskImage.loadImage(msa.filtered, msa.size)
+          val bootSector = DiskImage.readBootSector(data)
+          val imageStream = DiskImage.dataToStream(data)
+          Right(DiskInfo(path, name, kind, DiskFormat(msa.sectors, msa.tracks, msa.sectorsPerTrack, msa.sides), computeChecksum(imageStream), bootSector))
         }
         catch {
           case ex: Exception =>

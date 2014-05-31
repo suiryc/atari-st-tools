@@ -18,6 +18,7 @@ class MSADisk(input: InputStream) {
   val trackEnd = dis.readUnsignedShort()
   val tracks = trackEnd - trackStart + 1
   val sectors = sectorsPerTrack * tracks * sides
+  val size = sectors * DiskFormat.bytesPerSector
 
   val filtered = new FilterInputStream(dis) {
 
