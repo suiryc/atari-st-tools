@@ -56,7 +56,7 @@ object DiskTools extends App {
     opt[String]("zip-allowed-extra") text("allowed extra zip entries name") action { (v, c) =>
       c.copy(zipAllowedExtra = Some(v.r))
     }
-    val zipCharset = opt[String]("zip-charset") text("zip entries charset (if not UTF8)") minOccurs(
+    val zipCharset = () => opt[String]("zip-charset") text("zip entries charset (if not UTF8)") minOccurs(
       if (Charset.defaultCharset().compareTo(StandardCharsets.UTF_8) == 0) 1 else 0
     ) action { (v, c) =>
       c.copy(zipCharset = Charset.forName(v))
@@ -75,7 +75,7 @@ object DiskTools extends App {
       opt[Unit]("show-unique") text("show unique disks") action { (_, c) =>
         c.copy(showUnique = true)
       },
-      zipCharset
+      zipCharset()
     )
 
     cmd("deduplicate") text("deduplicate") action { (_, c) =>
@@ -90,7 +90,7 @@ object DiskTools extends App {
       opt[String]("output") text("output path") required() action { (v, c) =>
         c.copy(output = Paths.get(v))
       },
-      zipCharset
+      zipCharset()
     )
   }
 
