@@ -12,7 +12,7 @@ class MSADisk(input: InputStream) {
     throw new InvalidFormatException("Invalid magic number")
 
   val sectorsPerTrack = dis.readUnsignedShort()
-  protected val trackSize = sectorsPerTrack * 512
+  protected val trackSize = sectorsPerTrack * DiskFormat.bytesPerSector
   val sides = dis.readUnsignedShort() + 1
   val trackStart = dis.readUnsignedShort()
   val trackEnd = dis.readUnsignedShort()

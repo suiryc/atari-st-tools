@@ -39,7 +39,7 @@ object DiskImage {
     /* Some details: http://info-coach.fr/atari/software/FD-Soft.php */
 
     /* Boot sector is the first */
-    if (data.length < 512)
+    if (data.length < DiskFormat.bytesPerSector)
       throw new InvalidFormatException("Image has no boot sector")
 
     val input = dataToStream(data)
