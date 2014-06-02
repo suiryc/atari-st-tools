@@ -75,6 +75,7 @@ object DiskInfo {
         val r =
           if (entries.length == 0) Left(new Exception("Zip contains nothing"))
           else if (knownEntries.length == 0) Left(new NoDiskInZipException())
+          else if (knownEntries.length > 1) Left(new Exception("Zip contains more than one disk"))
           else if (extraEntries.length > 0) Left(new Exception("Zip contains unknown extra entries"))
           else {
             val entry = knownEntries.head._1
