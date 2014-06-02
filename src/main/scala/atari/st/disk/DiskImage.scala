@@ -1,7 +1,6 @@
 package atari.st.disk
 
 import atari.st.disk.exceptions.{
-  IncompleteImageException,
   InvalidFormatException,
   InvalidImageException
 }
@@ -44,7 +43,9 @@ object DiskImage {
 
     val actual = loop(0)
     if (actual != size)
-      throw new IncompleteImageException(s"Loaded ${actual}, expected ${size}")
+      throw new InvalidImageException(s"Loaded ${actual}, expected ${size}")
+    if (input.read() != -1)
+      throw new InvalidImageException(s"Could load more than expected ${size}")
     data
   }
 
