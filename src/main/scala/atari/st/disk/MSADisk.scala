@@ -1,14 +1,31 @@
 package atari.st.disk
 
 import atari.st.disk.exceptions.InvalidFormatException
-import java.io.{DataInputStream, FilterInputStream, InputStream}
+import java.io.{
+  BufferedOutputStream,
+  DataInputStream,
+  DataOutputStream,
+  EOFException,
+  FilterInputStream,
+  FilterOutputStream,
+  InputStream,
+  OutputStream
+}
 
 
-class MSADisk(input: InputStream) {
+object MSADisk {
+
+  val magicHeader = 0x0E0F
+
+}
+
+class MSAInputDisk(input: InputStream) {
+
+  import MSADisk._
 
   protected val dis = new DataInputStream(input)
 
-  if (dis.readUnsignedShort() != 0x0E0F)
+  if (dis.readUnsignedShort() != magicHeader)
     throw new InvalidFormatException("Invalid magic number")
 
   val sectorsPerTrack = dis.readUnsignedShort()
@@ -140,4 +157,113 @@ class MSADisk(input: InputStream) {
     }
 
   }
+}
+
+class MSAOutputDisk(output: OutputStream, format: StandardDiskFormat) {
+
+  import MSADisk._
+
+  protected val dos = new DataOutputStream(output)
+
+  dos.writeShort(magicHeader)
+  dos.writeShort(format.sectorsPerTrack)
+  protected val trackSize = format.sectorsPerTrack * DiskFormat.bytesPerSector
+  dos.writeShort(format.sides - 1)
+  dos.writeShort(0)
+  dos.writeShort(format.tracks - 1)
+
+  val filtered = new MASOutputStream(new BufferedOutputStream(dos))
+
+  class MASOutputStream(out: OutputStream)
+  extends FilterOutputStream(out)
+  {
+
+    protected var currentTrackSide = 0
+    protected var trackData: Option[Array[Byte]] = None
+    protected var trackOffset = 0
+
+    protected def nextTrack(track: Array[Byte]) {
+      val compressed = new Array[Byte](trackSize)
+
+      /* Encoding takes 4 bytes:
+       *  - 0xE5 marker
+       *  - 1 byte: value to repeat
+       *  - 2 bytes: repeat count
+       * Even though encoding a byte repeated 4 times saves no space,
+       * implementations still do it.
+       * Thus the rules are:
+       *  - encode a byte if repeated at least 4 times
+       *  - always encode 0xE5 (the marker value)
+       *  - only keep the compressed track if its size is less than the
+       *    uncompressed track
+       */
+      @scala.annotation.tailrec
+      def compress(compressedOffset: Int, trackOffset: Int): Int =
+        /* Note: give up as soon as we reach uncompressed track size */
+        if ((trackOffset == trackSize) || (compressedOffset == trackSize)) compressedOffset
+        else {
+          val b = track(trackOffset)
+          @scala.annotation.tailrec
+          def loop(trackOffset: Int, repeat: Int): Int =
+            if (trackOffset == trackSize) repeat
+            else if (track(trackOffset) == b) loop(trackOffset + 1, repeat + 1)
+            else repeat
+          val repeat = loop(trackOffset + 1, 1)
+
+          /* Note: *always* encode the marker */
+          if ((repeat > 4) || (b == 0xE5.byteValue())) {
+            if (compressedOffset + 4 >= trackSize) trackSize
+            else {
+              compressed(compressedOffset) = 0xE5.byteValue()
+              compressed(compressedOffset + 1) = b
+              compressed(compressedOffset + 2) = ((repeat >>> 8) & 0xFF).byteValue()
+              compressed(compressedOffset + 3) = ((repeat >>> 0) & 0xFF).byteValue()
+              compress(compressedOffset + 4, trackOffset + repeat)
+            }
+          }
+          else {
+            compressed(compressedOffset) = b
+            compress(compressedOffset + 1, trackOffset + 1)
+          }
+        }
+
+      val compressedOffset = compress(0, 0)
+      if (compressedOffset < trackSize) {
+        /* compressed */
+        dos.writeShort(compressedOffset)
+        dos.write(compressed, 0, compressedOffset)
+      }
+      else {
+        /* not compressed */
+        dos.writeShort(track.length)
+        dos.write(track)
+      }
+
+      currentTrackSide += 1
+      trackOffset = 0
+    }
+
+    override def write(b: Int) {
+      if (currentTrackSide == format.tracks * format.sides)
+        throw new EOFException("Cannot write beyond disk format")
+
+      val array = trackData getOrElse {
+        val array = new Array[Byte](trackSize)
+        trackData = Some(array)
+        array
+      }
+
+      array(trackOffset) = b.byteValue()
+      trackOffset += 1
+      if (trackOffset == trackSize)
+        nextTrack(array)
+    }
+
+    def checkComplete() {
+      if (currentTrackSide != format.tracks * format.sides)
+        throw new EOFException("Did not write full disk")
+    }
+
+  }
+
 }

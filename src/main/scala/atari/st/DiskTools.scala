@@ -1,12 +1,15 @@
 package atari.st
 
 import atari.st.disk.{
+  Disk,
   DiskFormat,
   DiskInfo,
+  DiskType,
   StandardDiskFormat,
   UnknownDiskFormat
 }
 import atari.st.disk.exceptions.NoDiskInZipException
+import atari.st.util.Util
 import java.nio.charset.{Charset, StandardCharsets}
 import java.nio.file.{Files, Path, Paths}
 import scala.collection.mutable
@@ -18,9 +21,10 @@ import suiryc.scala.io.NameFilter._
 object DiskTools extends App {
 
   object AppMode extends Enumeration {
-    val test = Value
-    val inspect = Value
+    val convert = Value
     val deduplicate = Value
+    val inspect = Value
+    val test = Value
   }
 
   case class AppOptions(
@@ -30,6 +34,7 @@ object DiskTools extends App {
     dryRun: Boolean = false,
     mode: AppMode.Value = AppMode.test,
     output: Path = null,
+    outputType: DiskType.Value = DiskType.MSA,
     showDuplicates: Boolean = false,
     showUnique: Boolean = false,
     sources: List[Path] = Nil,
@@ -38,8 +43,6 @@ object DiskTools extends App {
     zipAllowedExtra: Option[Regex] = None,
     zipCharset: Charset = Charset.defaultCharset()
   )
-
-  case class Disk(root: Path, info: DiskInfo)
 
 
   println(s"********** Started: ${new java.util.Date}")
@@ -53,9 +56,6 @@ object DiskTools extends App {
     help("help") text("print help")
     val zipCharset = () => opt[Unit]("check-boot-sector") text("check boot sector") action { (_, c) =>
       c.copy(checkBootSector = true)
-    }
-    opt[String]("source") text("source path") unbounded() action { (v, c) =>
-      c.copy(sources = c.sources :+ Paths.get(v))
     }
     opt[Unit]('v', "verbose") text("increase verbosity level") action { (_, c) =>
       c.copy(verbose = c.verbose + 1)
@@ -71,10 +71,39 @@ object DiskTools extends App {
     ) action { (v, c) =>
       c.copy(zipCharset = Charset.forName(v))
     }
-
-    cmd("test") text("test") action { (_, c) =>
-      c.copy(mode = AppMode.test)
+    val output = () => opt[String]("output") text("output path") required() action { (v, c) =>
+      c.copy(output = Paths.get(v))
     }
+    val source = () => arg[String]("source...") text("files/folders to process") unbounded() action { (v, c) =>
+      c.copy(sources = c.sources :+ Paths.get(v))
+    }
+
+    cmd("convert") text("convert disk image") action { (_, c) =>
+      c.copy(mode = AppMode.convert)
+    } children(
+      checkBootSector(),
+      output(),
+      opt[String]("to") text("output type") action { (v, c) =>
+        c.copy(outputType = DiskType(v))
+      },
+      zipCharset(),
+      source()
+    )
+
+    cmd("deduplicate") text("deduplicate") action { (_, c) =>
+      c.copy(mode = AppMode.deduplicate, byName = true)
+    } children(
+      opt[Unit]("allow-by-name") text("allow duplicates by name (but not by checksum)") action { (_, c) =>
+        c.copy(allowByName = true)
+      },
+      checkBootSector(),
+      opt[Unit]("dry-run") text("do not modify sources") action { (_, c) =>
+        c.copy(dryRun = true)
+      },
+      output(),
+      zipCharset(),
+      source()
+    )
 
     cmd("inspect") text("inspect disks") action { (_, c) =>
       c.copy(mode = AppMode.inspect)
@@ -89,37 +118,30 @@ object DiskTools extends App {
       opt[Unit]("show-unique") text("show unique disks") action { (_, c) =>
         c.copy(showUnique = true)
       },
-      zipCharset()
+      zipCharset(),
+      source()
     )
 
-    cmd("deduplicate") text("deduplicate") action { (_, c) =>
-      c.copy(mode = AppMode.deduplicate, byName = true)
-    } children(
-      opt[Unit]("allow-by-name") text("allow duplicates by name (but not by checksum)") action { (_, c) =>
-        c.copy(allowByName = true)
-      },
-      checkBootSector(),
-      opt[Unit]("dry-run") text("do not modify sources") action { (_, c) =>
-        c.copy(dryRun = true)
-      },
-      opt[String]("output") text("output path") required() action { (v, c) =>
-        c.copy(output = Paths.get(v))
-      },
-      zipCharset()
-    )
+    cmd("test") text("test") action { (_, c) =>
+      c.copy(mode = AppMode.test)
+    }
   }
 
   val options = parser.parse(args, AppOptions()) getOrElse { sys.exit(1) }
+  implicit val charset = options.zipCharset
 
   options.mode match {
-    case AppMode.test =>
-      test()
+    case AppMode.convert =>
+      convert()
+
+    case AppMode.deduplicate =>
+      deduplicate()
 
     case AppMode.inspect =>
       inspect()
 
-    case AppMode.deduplicate =>
-      deduplicate()
+    case AppMode.test =>
+      test()
   }
   println(s"********** Ended: ${new java.util.Date}")
 
@@ -139,9 +161,9 @@ object DiskTools extends App {
     }
   }
 
-  def updateDuplicates(root: Path, map: mutable.Map[String, List[Disk]], key: String, info: DiskInfo) {
+  def updateDuplicates(map: mutable.Map[String, List[Disk]], key: String, disk: Disk) {
     val duplicates = map.getOrElseUpdate(key, Nil)
-    map.put(key, Disk(root, info) :: duplicates)
+    map.put(key, duplicates :+ disk)
   }
 
   def atomicName(name: String) =
@@ -150,22 +172,27 @@ object DiskTools extends App {
       /* without extension */
       split("""\.""").reverse.tail.reverse.mkString(".")
 
-  def findDuplicates() {
-    options.sources foreach { root =>
-      val files =
-        if (Files.isDirectory(root)) {
-          println(s"Searching for files in ${root} ...")
-          val finder = PathFinder(root) ** """(?i).*\.(?:st|msa|zip)""".r
+  def findDisks(): List[Disk] = {
+    options.sources flatMap { _root =>
+      val (root, files) =
+        if (Files.isDirectory(_root)) {
+          println(s"Searching for files in ${_root} ...")
+          val finder = PathFinder(_root) ** """(?i).*\.(?:st|msa|zip)""".r
           val files = finder.get().toList
-          println(s"Processing files in ${root} ...")
-          files
+          println(s"Loading files info in ${_root} ...")
+          (_root, files)
+        }
+        else if (Files.exists(_root)) {
+          println(s"Loading file ${_root} info ...")
+          (_root.getParent, List(_root.toFile))
         }
         else {
-          println(s"Processing ${root} ...")
-          List(root.toFile)
+          println(s"Path ${_root} does not exist.")
+          (_root, Nil)
         }
-      files sortBy(_.toString.toLowerCase) map(_.toPath) foreach { path =>
-        DiskInfo(path, options.zipCharset, options.zipAllowedExtra).fold ({ ex =>
+      files sortBy(_.toString.toLowerCase) map { file =>
+        val path = file.toPath
+        DiskInfo(path, options.zipAllowedExtra).fold ({ ex =>
           ex match {
             case _: NoDiskInZipException =>
 
@@ -173,13 +200,23 @@ object DiskTools extends App {
               println(s"Error with file[$path]: ${ex.getMessage()}")
               ex.printStackTrace()
           }
+          None
         }, { info =>
-          val checksum = info.checksum
-          updateDuplicates(root, diskChecksums, info.checksum, info)
-          if (options.byName)
-            updateDuplicates(root, diskNames, atomicName(info.name.toLowerCase()), info)
+          Some(Disk(root, info))
         })
+      } collect {
+        case Some(v) => v
       }
+    }
+  }
+
+  def findDuplicates() {
+    val disks = findDisks()
+    println("Searching duplicates ...")
+    disks foreach { disk =>
+      updateDuplicates(diskChecksums, disk.info.checksum, disk)
+      if (options.byName)
+        updateDuplicates(diskNames, atomicName(disk.info.name.toLowerCase()), disk)
     }
   }
 
@@ -294,21 +331,7 @@ object DiskTools extends App {
 
   def deduplicate() {
     def move(folder: String, root: Path, path: Path) {
-      def findTarget(path: Path, n: Int): Path = {
-        val name: String =
-          if (n == 0) path.getFileName().toString()
-          else {
-            val nameSplit = path.getFileName().toString().split("""\.""").toList
-            ((nameSplit(0) + s"-$n") :: nameSplit.tail).mkString(".")
-          }
-        val target = path.resolveSibling(name)
-        if (!target.toFile.exists) target
-        else {
-          println(s"Target already exists: ${target}")
-          findTarget(path, n + 1)
-        }
-      }
-      val target = findTarget(options.output.resolve(folder).resolve(root.relativize(path)), 0)
+      val target = Util.findTarget(options.output.resolve(folder).resolve(root.relativize(path)))
       target.getParent.toFile.mkdirs()
       Files.move(path, target)
     }
@@ -357,6 +380,13 @@ object DiskTools extends App {
             move("others", other.root, other.info.path)
         }
       }
+    }
+  }
+
+  def convert() {
+    findDisks() foreach { disk =>
+      checkFormat(disk.info)
+      DiskConverter.convert(disk, options.output, options.outputType)
     }
   }
 

@@ -8,9 +8,10 @@ import java.security.MessageDigest
 import java.util.zip.ZipFile
 import scala.language.postfixOps
 import scala.util.matching.Regex
+import suiryc.scala.misc.EnumerationEx
 
 
-object DiskType extends Enumeration {
+object DiskType extends EnumerationEx {
   val ST = Value
   val MSA = Value
   val Unknown = Value
@@ -19,7 +20,48 @@ object DiskType extends Enumeration {
 }
 
 
-case class DiskInfo(path: Path, name: String, kind: DiskType.Value, format: DiskFormat, checksum: String, bootSector: BootSector)
+case class DiskInfo(
+  path: Path,
+  name: String,
+  kind: DiskType.Value,
+  format: DiskFormat,
+  checksum: String,
+  bootSector: BootSector
+) {
+
+  import DiskInfo._
+
+  def getImage()(implicit zipCharset: Charset): DiskImage = {
+    def build(input: InputStream): DiskImage = {
+      val r = kind match {
+        case DiskType.ST =>
+          val data = DiskImage.loadImage(input, format.size)
+          new DiskImage(data, this)
+
+        case DiskType.MSA =>
+          val msa = new MSAInputDisk(input)
+          val data = DiskImage.loadImage(msa.filtered, format.size)
+          new DiskImage(data, this)
+      }
+      input.close()
+      r
+    }
+
+    if (extension(path.getFileName().toString) == "zip") {
+      import scala.collection.JavaConversions._
+
+      val zip = new ZipFile(path.toFile, zipCharset)
+      val entry = zip.entries().toList.find(_.getName() == name).get
+      val r = build(zip.getInputStream(entry))
+      zip.close()
+      r
+    }
+    else {
+      build(new BufferedInputStream(new FileInputStream(path.toFile)))
+    }
+  }
+
+}
 
 object DiskInfo {
 
@@ -40,7 +82,7 @@ object DiskInfo {
 
       case DiskType.MSA =>
         try {
-          val msa = new MSADisk(input)
+          val msa = new MSAInputDisk(input)
           val data = DiskImage.loadImage(msa.filtered, msa.size)
           val bootSector = DiskImage.readBootSector(data)
           val imageStream = DiskImage.dataToStream(data)
@@ -52,7 +94,7 @@ object DiskInfo {
         }
     }
 
-  def apply(path: Path, zipCharset: Charset = Charset.defaultCharset(), zipAllowedExtraFile: Option[Regex] = None): Either[Exception, DiskInfo] = {
+  def apply(path: Path, zipAllowedExtraFile: Option[Regex] = None)(implicit zipCharset: Charset): Either[Exception, DiskInfo] = {
     def build(name: String, kind: DiskType.Value, input: InputStream, size: Int): Either[Exception, DiskInfo] = {
       val r = DiskInfo(path, name, kind, input, size)
       input.close()
