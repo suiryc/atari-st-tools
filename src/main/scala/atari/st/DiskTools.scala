@@ -43,8 +43,9 @@ object DiskTools extends App {
     sources: List[Path] = Nil,
     verbose: Int = 0,
     warnUnknownFormat: Boolean = Settings.core.warnUnknownFormat,
-    zipAllowedExtra: List[Regex] = Settings.core.zipAllowedExtra,
-    zipAllowedExtraOverriden: Boolean = false,
+    zipAllowDiskName: Boolean = Settings.core.zipAllowDiskName,
+    zipAllowExtra: List[Regex] = Settings.core.zipAllowExtra,
+    zipAllowExtraOverriden: Boolean = false,
     zipCharset: Charset = Settings.core.zipCharset
   )
 
@@ -80,11 +81,17 @@ object DiskTools extends App {
     opt[Unit]("no-warn-unknown-format") text("do not warn on unknown disk format") action { (_, c) =>
       c.copy(warnUnknownFormat = false)
     }
-    opt[String]("zip-allowed-extra") text("allowed extra zip entries name") unbounded() action { (v, c) =>
-      val zipAllowedExtra =
-        if (!c.zipAllowedExtraOverriden) List(v.r)
-        else c.zipAllowedExtra :+ v.r
-      c.copy(zipAllowedExtra = zipAllowedExtra, zipAllowedExtraOverriden = true)
+    opt[Boolean]("zip-allow-disk-name") text("allow zip to contain another file which name is the disk") action { (v, c) =>
+      c.copy(zipAllowDiskName = true)
+    }
+    opt[Boolean]("no-zip-allow-disk-name") text("do not allow zip to contain another file which name is the disk") action { (v, c) =>
+      c.copy(zipAllowDiskName = false)
+    }
+    opt[String]("zip-allow-extra") text("allow extra zip entries name") unbounded() action { (v, c) =>
+      val zipAllowExtra =
+        if (!c.zipAllowExtraOverriden) List(v.r)
+        else c.zipAllowExtra :+ v.r
+      c.copy(zipAllowExtra = zipAllowExtra, zipAllowExtraOverriden = true)
     }
     val zipCharset = () => opt[String]("zip-charset") text("zip entries charset (if not UTF8)") minOccurs(
       if (Settings.core.zipCharset.compareTo(StandardCharsets.UTF_8) == 0) 1 else 0
@@ -185,12 +192,6 @@ object DiskTools extends App {
     map.put(key, duplicates :+ disk)
   }
 
-  def atomicName(name: String) =
-    /* keep filename */
-    name.split("/").toList.reverse.head.
-      /* without extension */
-      split("""\.""").reverse.tail.reverse.mkString(".")
-
   def findDisks(): List[Disk] = {
     options.sources flatMap { _root =>
       val (root, files) =
@@ -211,7 +212,7 @@ object DiskTools extends App {
         }
       files sortBy(_.toString.toLowerCase) map { file =>
         val path = file.toPath
-        DiskInfo(path, options.zipAllowedExtra).fold ({ ex =>
+        DiskInfo(path, options.zipAllowDiskName, options.zipAllowExtra).fold ({ ex =>
           ex match {
             case _: NoDiskInZipException =>
 
@@ -235,7 +236,7 @@ object DiskTools extends App {
     disks foreach { disk =>
       updateDuplicates(diskChecksums, disk.info.checksum, disk)
       if (options.byName)
-        updateDuplicates(diskNames, atomicName(disk.info.name.toLowerCase()), disk)
+        updateDuplicates(diskNames, disk.info.atomicName, disk)
     }
   }
 
@@ -248,7 +249,7 @@ object DiskTools extends App {
       pointsRef - name.split("/").length
 
     def pointsName(name: String, path: Path) = {
-      val shortName = atomicName(name)
+      val shortName = DiskInfo.atomicName(name)
 
       /* we prefer exact match */
       if (path.getFileName().toString.startsWith(s"${shortName}.")) pointsRef
@@ -365,7 +366,7 @@ object DiskTools extends App {
         if (options.allowByName) Nil
         else {
           val disks = preferred :: duplicates.others ::: duplicates.excluded
-          val names = disks.map(dup => atomicName(dup.info.name.toLowerCase())).toSet
+          val names = disks.map(dup => dup.info.atomicName).toSet
 
           def isInDisks(disk: Disk) =
             disks.exists(_.info.path.compareTo(disk.info.path) == 0)

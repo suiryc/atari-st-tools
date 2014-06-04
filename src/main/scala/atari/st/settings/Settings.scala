@@ -37,7 +37,8 @@ class Settings(
   val warnUnknownFormat = value[Boolean]("warn.unknown-format")
 
   val zipCharset = Charset.forName(value[String]("zip.charset"))
-  val zipAllowedExtra = config.getStringList("zip.allowed-extra").toList map(_.r)
+  val zipAllowDiskName = value[Boolean]("zip.allow-disk-name")
+  val zipAllowExtra = config.getStringList("zip.allow-extra").toList map(_.r)
 
   val outputRoot = PathsEx.get(value[String]("output.root"))
   val outputRelativePreferred = value[String]("output.preferred")
