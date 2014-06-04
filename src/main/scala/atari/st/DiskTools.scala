@@ -287,15 +287,15 @@ object DiskTools extends App {
     else Duplicates(duplicates.head, Nil, Nil)
   }
 
-  def checkFormat(info: DiskInfo) {
+  def checkFormat(info: DiskInfo, force: Boolean = false) {
     info.format match {
       case format: UnknownDiskFormat =>
-        if (options.warnUnknownFormat || options.checkBootSector)
+        if (options.warnUnknownFormat || options.checkBootSector || force)
           println(s"WARNING! Disk[${info.name}] image[${info.path}] has unknown format: ${format}")
 
       case format: StandardDiskFormat =>
         val bootSector = info.bootSector
-        if (options.checkBootSector) {
+        if (options.checkBootSector || force) {
           if ((bootSector.sectorsPerTrack != format.sectorsPerTrack) ||
             (bootSector.tracks != format.tracks) ||
             (bootSector.sides != format.sides))
@@ -374,12 +374,13 @@ object DiskTools extends App {
             diskNames(name) filterNot(isInDisks(_))
           } groupBy(_.info.path) map(_._2.head.info)
         }
+      val unsure = !unsureDups.isEmpty
 
-      checkFormat(preferred.info)
+      checkFormat(preferred.info, unsure)
       for (dup <- duplicates.others ::: duplicates.excluded)
-        checkFormat(dup.info)
+        checkFormat(dup.info, unsure)
 
-      if (duplicates.others.isEmpty && duplicates.excluded.isEmpty && unsureDups.isEmpty)
+      if (duplicates.others.isEmpty && duplicates.excluded.isEmpty && !unsure)
         println(s"Name: ${preferred.info.name}; Path: ${preferred.info.path}")
       else {
         println(s"Name: ${preferred.info.name}")
@@ -390,7 +391,7 @@ object DiskTools extends App {
       if (!duplicates.excluded.isEmpty)
         println(s"  Excluded (for richer disk type): ${duplicates.excluded.map(_.info.path)}")
 
-      if (!unsureDups.isEmpty)
+      if (unsure)
         println(s"  No de-duplication due to unsure duplicates by name (but not by checksum): ${unsureDups}")
       else {
         if (!options.dryRun) {
