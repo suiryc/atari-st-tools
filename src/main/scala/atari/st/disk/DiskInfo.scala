@@ -94,7 +94,7 @@ object DiskInfo {
         }
     }
 
-  def apply(path: Path, zipAllowedExtraFile: Option[Regex] = None)(implicit zipCharset: Charset): Either[Exception, DiskInfo] = {
+  def apply(path: Path, zipAllowedExtra: List[Regex] = Nil)(implicit zipCharset: Charset): Either[Exception, DiskInfo] = {
     def build(name: String, kind: DiskType.Value, input: InputStream, size: Int): Either[Exception, DiskInfo] = {
       val r = DiskInfo(path, name, kind, input, size)
       input.close()
@@ -111,9 +111,12 @@ object DiskInfo {
           (entry, imageType(extension(entry.getName())))
         }
         val (knownEntries, unknownEntries) = entries.partition(_._2 != DiskType.Unknown)
-        val extraEntries = zipAllowedExtraFile map { regex =>
-          unknownEntries.filterNot(entry => regex.pattern.matcher(entry._1.getName()).matches())
-        } getOrElse(unknownEntries)
+        val extraEntries = unknownEntries filterNot { entry =>
+          val entryName = entry._1.getName()
+          zipAllowedExtra exists { regex =>
+            regex.pattern.matcher(entryName).matches()
+          }
+        }
         val r =
           if (entries.length == 0) Left(new Exception("Zip contains nothing"))
           else if (knownEntries.length == 0) Left(new NoDiskInZipException())

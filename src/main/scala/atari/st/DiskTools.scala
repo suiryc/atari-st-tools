@@ -9,6 +9,7 @@ import atari.st.disk.{
   UnknownDiskFormat
 }
 import atari.st.disk.exceptions.NoDiskInZipException
+import atari.st.settings.Settings
 import atari.st.util.Util
 import java.nio.charset.{Charset, StandardCharsets}
 import java.nio.file.{Files, Path, Paths}
@@ -29,33 +30,46 @@ object DiskTools extends App {
 
   case class AppOptions(
     allowByName: Boolean = false,
-    checkBootSector: Boolean = false,
+    checkBootSector: Boolean = Settings.core.checkBootSector,
     byName: Boolean = false,
     dryRun: Boolean = false,
     mode: AppMode.Value = AppMode.test,
-    output: Path = null,
+    outputPreferred: Path = Settings.core.outputPreferred,
+    outputOthers: Path = Settings.core.outputOthers,
+    outputConverted: Path = Settings.core.outputConverted,
     outputType: DiskType.Value = DiskType.MSA,
     showDuplicates: Boolean = false,
     showUnique: Boolean = false,
     sources: List[Path] = Nil,
     verbose: Int = 0,
-    warnUnknownFormat: Boolean = false,
-    zipAllowedExtra: Option[Regex] = None,
-    zipCharset: Charset = Charset.defaultCharset()
+    warnUnknownFormat: Boolean = Settings.core.warnUnknownFormat,
+    zipAllowedExtra: List[Regex] = Settings.core.zipAllowedExtra,
+    zipAllowedExtraOverriden: Boolean = false,
+    zipCharset: Charset = Settings.core.zipCharset
   )
 
 
   println(s"********** Started: ${new java.util.Date}")
   println(s"Args: ${args.toList}")
-  println(s"Default charset: ${Charset.defaultCharset()}")
 
   val diskChecksums = mutable.Map[String, List[Disk]]()
   val diskNames = mutable.Map[String, List[Disk]]()
 
   val parser = new scopt.OptionParser[AppOptions]("TestST") {
     help("help") text("print help")
-    val zipCharset = () => opt[Unit]("check-boot-sector") text("check boot sector") action { (_, c) =>
+    opt[Unit]("check-boot-sector") text("check boot sector") action { (_, c) =>
       c.copy(checkBootSector = true)
+    }
+    opt[Unit]("no-check-boot-sector") text("do not check boot sector") action { (_, c) =>
+      c.copy(checkBootSector = false)
+    }
+    opt[String]("output") text("output root path") action { (v, c) =>
+      val outputRoot = Paths.get(v)
+      c.copy(
+        outputPreferred = outputRoot.resolve(Settings.core.outputRelativePreferred),
+        outputOthers = outputRoot.resolve(Settings.core.outputRelativeOthers),
+        outputConverted = outputRoot.resolve(Settings.core.outputRelativeConverted)
+      )
     }
     opt[Unit]('v', "verbose") text("increase verbosity level") action { (_, c) =>
       c.copy(verbose = c.verbose + 1)
@@ -63,16 +77,19 @@ object DiskTools extends App {
     opt[Unit]("warn-unknown-format") text("warn on unknown disk format") action { (_, c) =>
       c.copy(warnUnknownFormat = true)
     }
-    opt[String]("zip-allowed-extra") text("allowed extra zip entries name") action { (v, c) =>
-      c.copy(zipAllowedExtra = Some(v.r))
+    opt[Unit]("no-warn-unknown-format") text("do not warn on unknown disk format") action { (_, c) =>
+      c.copy(warnUnknownFormat = false)
     }
-    val checkBootSector = () => opt[String]("zip-charset") text("zip entries charset (if not UTF8)") minOccurs(
-      if (Charset.defaultCharset().compareTo(StandardCharsets.UTF_8) == 0) 1 else 0
+    opt[String]("zip-allowed-extra") text("allowed extra zip entries name") unbounded() action { (v, c) =>
+      val zipAllowedExtra =
+        if (!c.zipAllowedExtraOverriden) List(v.r)
+        else c.zipAllowedExtra :+ v.r
+      c.copy(zipAllowedExtra = zipAllowedExtra, zipAllowedExtraOverriden = true)
+    }
+    val zipCharset = () => opt[String]("zip-charset") text("zip entries charset (if not UTF8)") minOccurs(
+      if (Settings.core.zipCharset.compareTo(StandardCharsets.UTF_8) == 0) 1 else 0
     ) action { (v, c) =>
       c.copy(zipCharset = Charset.forName(v))
-    }
-    val output = () => opt[String]("output") text("output path") required() action { (v, c) =>
-      c.copy(output = Paths.get(v))
     }
     val source = () => arg[String]("source...") text("files/folders to process") unbounded() action { (v, c) =>
       c.copy(sources = c.sources :+ Paths.get(v))
@@ -81,8 +98,6 @@ object DiskTools extends App {
     cmd("convert") text("convert disk image") action { (_, c) =>
       c.copy(mode = AppMode.convert)
     } children(
-      checkBootSector(),
-      output(),
       opt[String]("to") text("output type") action { (v, c) =>
         c.copy(outputType = DiskType(v))
       },
@@ -96,11 +111,9 @@ object DiskTools extends App {
       opt[Unit]("allow-by-name") text("allow duplicates by name (but not by checksum)") action { (_, c) =>
         c.copy(allowByName = true)
       },
-      checkBootSector(),
       opt[Unit]("dry-run") text("do not modify sources") action { (_, c) =>
         c.copy(dryRun = true)
       },
-      output(),
       zipCharset(),
       source()
     )
@@ -111,7 +124,6 @@ object DiskTools extends App {
       opt[Unit]("by-name") text("also show duplicates by name") action { (_, c) =>
         c.copy(byName = true)
       },
-      checkBootSector(),
       opt[Unit]("show-duplicates") text("show duplicate disks") action { (_, c) =>
         c.copy(showDuplicates = true)
       },
@@ -128,6 +140,13 @@ object DiskTools extends App {
   }
 
   val options = parser.parse(args, AppOptions()) getOrElse { sys.exit(1) }
+  println(s"Options:")
+  /* XXX - scala way to do this ? */
+  for (field <- options.getClass().getDeclaredFields().toList.sortBy(_.getName())) {
+    val fieldName = field.getName()
+    val fieldValue = options.getClass().getMethod(fieldName).invoke(options)
+    println(s"  ${fieldName}: ${fieldValue}")
+  }
   implicit val charset = options.zipCharset
 
   options.mode match {
@@ -330,8 +349,8 @@ object DiskTools extends App {
   }
 
   def deduplicate() {
-    def move(folder: String, root: Path, path: Path) {
-      val target = Util.findTarget(options.output.resolve(folder).resolve(root.relativize(path)))
+    def move(output: Path, root: Path, path: Path) {
+      val target = Util.findTarget(output.resolve(root.relativize(path)))
       target.getParent.toFile.mkdirs()
       Files.move(path, target)
     }
@@ -375,9 +394,9 @@ object DiskTools extends App {
         println(s"  No de-duplication due to unsure duplicates by name (but not by checksum): ${unsureDups}")
       else {
         if (!options.dryRun) {
-          move("preferred", preferred.root, preferred.info.path)
+          move(options.outputPreferred, preferred.root, preferred.info.path)
           for (other <- duplicates.others ::: duplicates.excluded)
-            move("others", other.root, other.info.path)
+            move(options.outputOthers, other.root, other.info.path)
         }
       }
     }
@@ -386,7 +405,7 @@ object DiskTools extends App {
   def convert() {
     findDisks() foreach { disk =>
       checkFormat(disk.info)
-      DiskConverter.convert(disk, options.output, options.outputType)
+      DiskConverter.convert(disk, options.outputConverted, options.outputType)
     }
   }
 
