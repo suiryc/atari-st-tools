@@ -77,6 +77,12 @@ class MSAInputDisk(input: InputStream) {
         }
         else {
           /* compressed */
+          @inline def uncompressedByte(offset: Int, b: Byte) {
+            if (offset >= trackSize)
+              throw new InvalidFormatException(s"Invalid compressed track size: can uncompress more than expected ${trackSize}")
+            array(offset) = b
+          }
+
           @scala.annotation.tailrec
           def loop(offset: Int, remaining: Int): Int = {
             if (remaining <= 0) offset
@@ -88,18 +94,18 @@ class MSAInputDisk(input: InputStream) {
                 val byte = dis.read().byteValue()
                 val count = dis.readUnsignedShort()
                 for (i <- offset until (offset + count))
-                  array(i) = byte
+                  uncompressedByte(i, byte)
                 loop(offset + count, remaining - 4)
 
               case v =>
-                array(offset) = v.byteValue
+                uncompressedByte(offset, v.byteValue)
                 loop(offset + 1, remaining - 1)
             }
           }
 
           val actual = loop(0, compressedTrackSize)
           if (actual != trackSize)
-            throw new InvalidFormatException(s"Invalid compressed track size: ${actual} expected ${trackSize}")
+            throw new InvalidFormatException(s"Invalid compressed track size: uncompressed ${actual} expected ${trackSize}")
         }
 
         currentTrackSide += 1
