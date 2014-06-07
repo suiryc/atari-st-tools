@@ -15,8 +15,6 @@ object DiskType extends EnumerationEx {
   val ST = Value
   val MSA = Value
   val Unknown = Value
-
-  val extensions = values.map(_.toString.toLowerCase)
 }
 
 
@@ -49,7 +47,7 @@ case class DiskInfo(
       r
     }
 
-    if (extension(path.getFileName().toString) == "zip") {
+    if (extension(path.getFileName().toString).toLowerCase == "zip") {
       import scala.collection.JavaConversions._
 
       val zip = new ZipFile(path.toFile, zipCharset)
@@ -103,7 +101,7 @@ object DiskInfo {
       r
     }
 
-    if (extension(path.getFileName().toString) == "zip") {
+    if (extension(path.getFileName().toString).toLowerCase == "zip") {
       import scala.collection.JavaConversions._
 
       try {
@@ -139,6 +137,9 @@ object DiskInfo {
         r
       }
       catch {
+        case ex: Exception =>
+          Left(ex)
+
         case ex: Throwable =>
           Left(new Exception("Invalid zip file", ex))
       }
@@ -159,11 +160,15 @@ object DiskInfo {
       split("""\.""").reverse.tail.reverse.mkString(".")
 
   def extension(name: String) =
-    name.toLowerCase.split("""\.""").toList.reverse.head
+    name.split("""\.""").toList.reverse.head
 
   def imageType(extension: String): DiskType.Value =
-    if (!DiskType.extensions.contains(extension)) DiskType.Unknown
-    else DiskType.withName(extension.toUpperCase)
+    try {
+      DiskType(extension)
+    }
+    catch {
+      case _: Throwable => DiskType.Unknown
+    }
 
   def computeChecksum(stream: InputStream): String = {
     val buffer = new Array[Byte](1024 * 16)
