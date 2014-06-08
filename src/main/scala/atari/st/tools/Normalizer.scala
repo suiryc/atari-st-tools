@@ -3,6 +3,7 @@ package atari.st.tools
 import atari.st.disk.{DiskInfo, DiskNameFormatter, DiskType}
 import atari.st.settings.Settings
 import atari.st.util.Util
+import atari.st.util.zip.Zip
 import java.io.{
   BufferedInputStream,
   BufferedOutputStream,
@@ -138,7 +139,7 @@ object Normalizer {
   def unzipPath(path: Path, zip: ZipFile, entries: List[(ZipEntry, String)]) {
     var seen = List[ZipEntry]()
     var created = List[Path]()
-    try Util.unzip(path, { (_entry, input) =>
+    try Zip.unzip(path, { (_entry, input) =>
       entries.find(_._1.getName() == _entry.getName()) foreach { tuple =>
         val entry = tuple._1
         seen :+= entry

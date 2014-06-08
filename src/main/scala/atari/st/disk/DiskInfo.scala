@@ -2,7 +2,7 @@ package atari.st.disk
 
 import atari.st.disk.exceptions.NoDiskInZipException
 import atari.st.settings.Settings
-import atari.st.util.Util
+import atari.st.util.zip.Zip
 import java.io.{BufferedInputStream, FileInputStream, InputStream}
 import java.nio.charset.Charset
 import java.nio.file.Path
@@ -65,7 +65,7 @@ case class DiskInfo(
       val zip = new ZipFile(path.toFile, zipCharset)
       val entry = zip.entries().toList.find(_.getName() == name).get
       zip.close()
-      Util.unzip(path, { (_entry, input) =>
+      Zip.unzip(path, { (_entry, input) =>
         /* Continue until we find the entry */
         val found = (_entry.getName() == entry.getName())
         val value =
@@ -144,7 +144,7 @@ object DiskInfo {
               Left(new Exception("Unknown disk type"))
 
             case t =>
-              Util.unzip(path, { (_entry, input) =>
+              Zip.unzip(path, { (_entry, input) =>
                 /* Continue until we find the entry */
                 val found = (_entry.getName() == entry.getName())
                 val value =
