@@ -41,12 +41,18 @@ class Settings(
   val zipAllowDiskName = value[Boolean]("zip.allow-disk-name")
   val zipAllowExtra = config.getStringList("zip.allow-extra").toList map(_.r)
 
-  val diskNameFormatters = config.getConfigList("disk-name.formatters") map { config =>
-    RegexDiskNameFormatter(
-      value[String]("label", config),
-      value[String]("format", config).r,
-      value[String]("normalized", config)
-    )
+  val diskNameFormatters = config.getConfigList("disk-name.formatters") flatMap { config =>
+    val label = value[String]("label", config)
+    val configNormalizers =
+      if (config.hasPath("normalizers")) config.getConfigList("normalizers").toList
+      else List(config)
+    configNormalizers map { config =>
+      RegexDiskNameFormatter(
+        label,
+        value[String]("format", config).r,
+        value[String]("normalized", config)
+      )
+    }
   }
 
   val outputRoot = PathsEx.get(value[String]("output.root"))
