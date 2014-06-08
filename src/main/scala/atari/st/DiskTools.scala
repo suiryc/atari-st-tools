@@ -2,7 +2,7 @@ package atari.st
 
 import atari.st.disk.DiskType
 import atari.st.settings.Settings
-import atari.st.tools.{Converter, Deduplicator, Inspector, Tester}
+import atari.st.tools.{Converter, Deduplicator, Inspector, Normalizer, Tester}
 import java.nio.charset.{Charset, StandardCharsets}
 import java.nio.file.{Path, Paths}
 import scala.util.matching.Regex
@@ -14,6 +14,7 @@ object DiskTools extends App {
     val convert = Value
     val deduplicate = Value
     val inspect = Value
+    val normalize = Value
     val test = Value
   }
 
@@ -32,6 +33,7 @@ object DiskTools extends App {
     sources: List[Path] = Nil,
     verbose: Int = 0,
     warnUnknownFormat: Boolean = Settings.core.warnUnknownFormat,
+    zip: Boolean = false,
     zipAllowDiskName: Boolean = Settings.core.zipAllowDiskName,
     zipAllowExtra: List[Regex] = Settings.core.zipAllowExtra,
     zipAllowExtraOverriden: Boolean = false,
@@ -50,6 +52,9 @@ object DiskTools extends App {
     opt[Unit]("no-check-boot-sector") text("do not check boot sector") action { (_, c) =>
       c.copy(checkBootSector = false)
     }
+    val dryRun = () => opt[Unit]("dry-run") text("do not modify sources") action { (_, c) =>
+      c.copy(dryRun = true)
+    }
     opt[String]("output") text("output root path") action { (v, c) =>
       val outputRoot = Paths.get(v)
       c.copy(
@@ -67,10 +72,13 @@ object DiskTools extends App {
     opt[Unit]("no-warn-unknown-format") text("do not warn on unknown disk format") action { (_, c) =>
       c.copy(warnUnknownFormat = false)
     }
-    opt[Boolean]("zip-allow-disk-name") text("allow zip to contain another file which name is the disk") action { (v, c) =>
+    val zip = () => opt[Unit]("zip") text("zip each disk image") action { (_, c) =>
+      c.copy(zip = true)
+    }
+    opt[Unit]("zip-allow-disk-name") text("allow zip to contain another file which name is the disk") action { (_, c) =>
       c.copy(zipAllowDiskName = true)
     }
-    opt[Boolean]("no-zip-allow-disk-name") text("do not allow zip to contain another file which name is the disk") action { (v, c) =>
+    opt[Unit]("no-zip-allow-disk-name") text("do not allow zip to contain another file which name is the disk") action { (_, c) =>
       c.copy(zipAllowDiskName = false)
     }
     opt[String]("zip-allow-extra") text("allow extra zip entries name") unbounded() action { (v, c) =>
@@ -94,6 +102,8 @@ object DiskTools extends App {
       opt[String]("to") text("output type") action { (v, c) =>
         c.copy(outputType = DiskType(v))
       },
+      /* XXX */
+      //zip(),
       zipCharset(),
       source()
     )
@@ -104,9 +114,7 @@ object DiskTools extends App {
       opt[Unit]("allow-by-name") text("allow duplicates by name (but not by checksum)") action { (_, c) =>
         c.copy(allowByName = true)
       },
-      opt[Unit]("dry-run") text("do not modify sources") action { (_, c) =>
-        c.copy(dryRun = true)
-      },
+      dryRun(),
       zipCharset(),
       source()
     )
@@ -123,6 +131,15 @@ object DiskTools extends App {
       opt[Unit]("show-unique") text("show unique disks") action { (_, c) =>
         c.copy(showUnique = true)
       },
+      zipCharset(),
+      source()
+    )
+
+    cmd("normalize") text("normalize") action { (_, c) =>
+      c.copy(mode = AppMode.normalize)
+    } children(
+      dryRun(),
+      zip(),
       zipCharset(),
       source()
     )
@@ -151,25 +168,32 @@ object DiskTools extends App {
     case AppMode.inspect =>
       inspect()
 
+    case AppMode.normalize =>
+      normalize()
+
     case AppMode.test =>
       test()
   }
   println(s"********** Ended: ${new java.util.Date}")
 
-  def test() {
-    Tester.test()
-  }
-
-  def inspect() {
-    Inspector.inspect()
+  def convert() {
+    Converter.convert()
   }
 
   def deduplicate() {
     Deduplicator.deduplicate()
   }
 
-  def convert() {
-    Converter.convert()
+  def inspect() {
+    Inspector.inspect()
+  }
+
+  def normalize() {
+    Normalizer.normalize()
+  }
+
+  def test() {
+    Tester.test()
   }
 
 }

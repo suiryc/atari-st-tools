@@ -26,7 +26,7 @@ object Converter {
       val input = image.inputStream
 
       val targetParent = output.resolve(disk.root.relativize(disk.info.path.getParent))
-      val targetName = (outputType.toString.toLowerCase :: disk.info.name.toLowerCase.split("""\.""").toList.reverse.tail).reverse.mkString(".")
+      val targetName = s"${disk.info.normalizedName}.${outputType.toString.toLowerCase}"
       val target = Util.findTarget(targetParent.resolve(targetName))
 
       def outputStream(): OutputStream = {
@@ -34,17 +34,9 @@ object Converter {
         new FileOutputStream(target.toFile)
       }
 
-      def transfer(output: OutputStream): OutputStream = {
-        val buffer = new Array[Byte](16 * 1024)
-        Stream.continually(input.read(buffer)) takeWhile(_ != -1) foreach { count =>
-          output.write(buffer, 0 , count)
-        }
-        output
-      }
-
       outputType match {
         case DiskType.ST =>
-          val output = transfer(outputStream())
+          val (output, _) = Util.transfer(input, outputStream())
           output.flush()
           output.close()
 
@@ -52,8 +44,8 @@ object Converter {
           disk.info.format match {
             case format: StandardDiskFormat =>
               val msa = new MSAOutputDisk(outputStream(), format)
-              val output = transfer(msa.filtered)
-              msa.filtered.checkComplete()
+              val (output, _) = Util.transfer(input, msa.filtered)
+              output.checkComplete()
               output.flush()
               output.close()
 

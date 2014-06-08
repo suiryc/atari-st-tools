@@ -1,5 +1,6 @@
 package atari.st.settings
 
+import atari.st.disk.RegexDiskNameFormatter
 import com.typesafe.config.{Config, ConfigFactory}
 import java.nio.charset.Charset
 import scala.collection.JavaConversions._
@@ -39,6 +40,14 @@ class Settings(
   val zipCharset = Charset.forName(value[String]("zip.charset"))
   val zipAllowDiskName = value[Boolean]("zip.allow-disk-name")
   val zipAllowExtra = config.getStringList("zip.allow-extra").toList map(_.r)
+
+  val diskNameFormatters = config.getConfigList("disk-name.formatters") map { config =>
+    RegexDiskNameFormatter(
+      value[String]("label", config),
+      value[String]("format", config).r,
+      value[String]("normalized", config)
+    )
+  }
 
   val outputRoot = PathsEx.get(value[String]("output.root"))
   val outputRelativePreferred = value[String]("output.preferred")

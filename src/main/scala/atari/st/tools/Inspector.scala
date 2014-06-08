@@ -9,9 +9,9 @@ object Inspector {
   import Core._
 
   def inspect() {
-    def inspect(map: mutable.Map[String, List[Disk]]) {
-      map.toList sortBy(_._2.head.info.name.toLowerCase()) foreach { tuple =>
-        val duplicates = sortDuplicates(tuple._2)
+    def inspect(map: mutable.Map[String, Duplicates]) {
+      map.toList sortBy(_._2.preferred.info.normalizedName) foreach { tuple =>
+        val duplicates = tuple._2
         val preferred = duplicates.preferred
 
         checkFormat(preferred.info)
@@ -22,9 +22,9 @@ object Inspector {
           options.showUnique)
         {
           if (duplicates.others.isEmpty && duplicates.excluded.isEmpty)
-            println(s"Name: ${preferred.info.name}; Image: ${preferred.info}")
+            println(s"Name: ${preferred.info.normalizedName}; Image: ${preferred.info}")
           else {
-            println(s"Name: ${preferred.info.name}")
+            println(s"Name: ${preferred.info.normalizedName}")
             println(s"  Preferred: ${preferred.info}")
           }
           if (!duplicates.others.isEmpty)

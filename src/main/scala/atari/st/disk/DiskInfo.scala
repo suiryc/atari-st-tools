@@ -1,11 +1,13 @@
 package atari.st.disk
 
 import atari.st.disk.exceptions.NoDiskInZipException
+import atari.st.settings.Settings
+import atari.st.util.Util
 import java.io.{BufferedInputStream, FileInputStream, InputStream}
 import java.nio.charset.Charset
 import java.nio.file.Path
 import java.security.MessageDigest
-import java.util.zip.ZipFile
+import java.util.zip.{ZipEntry, ZipException, ZipFile}
 import scala.language.postfixOps
 import scala.util.matching.Regex
 import suiryc.scala.misc.EnumerationEx
@@ -29,7 +31,17 @@ case class DiskInfo(
 
   import DiskInfo._
 
-  val atomicName = DiskInfo.atomicName(name).toLowerCase
+  val atomicName = DiskInfo.atomicName(name)
+
+  val nameFormatter =
+    DiskInfo.nameFormatter(atomicName)
+
+  val normalizedName = {
+    val formatter =
+      nameFormatter getOrElse(DiskNameFormatter.lowerCase)
+
+    formatter.normalize(atomicName)
+  }
 
   def getImage()(implicit zipCharset: Charset): DiskImage = {
     def build(input: InputStream): DiskImage = {
@@ -52,9 +64,21 @@ case class DiskInfo(
 
       val zip = new ZipFile(path.toFile, zipCharset)
       val entry = zip.entries().toList.find(_.getName() == name).get
-      val r = build(zip.getInputStream(entry))
       zip.close()
-      r
+      Util.unzip(path, { (_entry, input) =>
+        /* Continue until we find the entry */
+        val found = (_entry.getName() == entry.getName())
+        val value =
+          if (found) Some(build(input))
+          else None
+        (value, !found)
+      }) collectFirst {
+        case Some(disk) => disk
+      } getOrElse {
+        val ex = new ZipException("ZipFile/ZipInputStream mismatch")
+        ex.initCause(new Exception(s"Missing entry: ${entry.getName()}"))
+        throw ex
+      }
     }
     else {
       build(new BufferedInputStream(new FileInputStream(path.toFile)))
@@ -106,35 +130,36 @@ object DiskInfo {
 
       try {
         val zip = new ZipFile(path.toFile, zipCharset)
-
-        val entries = zip.entries().toList map { entry =>
-          (entry, imageType(extension(entry.getName())))
-        }
-        val (knownTuples, unknownTuples) = entries.partition(_._2 != DiskType.Unknown)
-        val diskEntry = knownTuples.headOption.map(_._1)
-        val extraTuples = unknownTuples filterNot { tuple =>
-          val entryName = tuple._1.getName()
-          (zipAllowExtra exists { regex =>
-            regex.pattern.matcher(filename(entryName)).matches()
-          }) || (zipAllowDiskName && diskEntry.exists { diskEntry =>
-            DiskInfo.atomicName(entryName).toLowerCase == DiskInfo.atomicName(diskEntry.getName().toLowerCase)
-          })
-        }
-        val r =
-          if (entries.length == 0) Left(new Exception("Zip contains nothing"))
-          else if (knownTuples.length == 0) Left(new NoDiskInZipException())
-          else if (knownTuples.length > 1) Left(new Exception("Zip contains more than one disk"))
-          else if (extraTuples.length > 0) Left(new Exception("Zip contains unknown extra entries"))
-          else {
-            val entry = diskEntry.get
-            imageType(extension(entry.getName())) match {
-              case DiskType.Unknown => Left(new Exception("Unknown disk type"))
-              case t => build(entry.getName(), t, zip.getInputStream(entry), entry.getSize().intValue())
-            }
-          }
-
+        val entries = zipEntries(zip, zipAllowDiskName, zipAllowExtra)
         zip.close()
-        r
+
+        if (entries.count == 0) Left(new Exception("Zip contains nothing"))
+        else if (entries.disks.length == 0) Left(new NoDiskInZipException())
+        else if (entries.disks.length > 1) Left(new Exception("Zip contains more than one disk"))
+        else if (entries.extraUnknown.length > 0) Left(new Exception("Zip contains unknown extra entries"))
+        else {
+          val entry = entries.disks.head.entry
+          imageType(extension(entry.getName())) match {
+            case DiskType.Unknown =>
+              Left(new Exception("Unknown disk type"))
+
+            case t =>
+              Util.unzip(path, { (_entry, input) =>
+                /* Continue until we find the entry */
+                val found = (_entry.getName() == entry.getName())
+                val value =
+                  if (found) Some(build(entry.getName(), t, input, entry.getSize().intValue()))
+                  else None
+                (value, !found)
+              }) collectFirst {
+                case Some(r) => r
+              } getOrElse {
+                val ex = new ZipException("ZipFile/ZipInputStream mismatch")
+                ex.initCause(new Exception(s"Missing entry: ${entry.getName()}"))
+                Left(ex)
+              }
+          }
+        }
       }
       catch {
         case ex: Exception =>
@@ -150,6 +175,32 @@ object DiskInfo {
     }
   }
 
+  case class ZipEntryType(entry: ZipEntry, kind: DiskType.Value)
+  case class ZipEntries(count: Int, disks: List[ZipEntryType], extraAllowed: List[ZipEntry], extraUnknown: List[ZipEntry])
+
+  def zipEntries(zip: ZipFile, zipAllowDiskName: Boolean, zipAllowExtra: List[Regex]): ZipEntries = {
+    import scala.collection.JavaConversions._
+
+    val tuples = zip.entries().toList filterNot(_.isDirectory) sortBy(_.getName.toLowerCase) map { entry =>
+      (entry, imageType(extension(entry.getName())))
+    }
+    val (knownTuples, otherTuples) = tuples.partition(_._2 != DiskType.Unknown)
+    val disks = knownTuples map { tuple =>
+      ZipEntryType(tuple._1, tuple._2)
+    }
+    val diskEntry = knownTuples.headOption.map(_._1)
+    val (extraAllowed, extraUnknown) = otherTuples map(_._1) partition { entry =>
+      val entryName = entry.getName()
+      (zipAllowExtra exists { regex =>
+        regex.pattern.matcher(filename(entryName)).matches()
+      }) || (zipAllowDiskName && diskEntry.exists { diskEntry =>
+        atomicName(entryName).toLowerCase == atomicName(diskEntry.getName().toLowerCase)
+      })
+    }
+
+    ZipEntries(tuples.length, disks, extraAllowed, extraUnknown)
+  }
+
   def filename(name: String) =
     name.split("/").toList.reverse.head
 
@@ -161,6 +212,11 @@ object DiskInfo {
 
   def extension(name: String) =
     name.split("""\.""").toList.reverse.head
+
+  def nameFormatter(name: String) =
+    Settings.core.diskNameFormatters find { formatter =>
+      formatter.matches(name)
+    }
 
   def imageType(extension: String): DiskType.Value =
     try {

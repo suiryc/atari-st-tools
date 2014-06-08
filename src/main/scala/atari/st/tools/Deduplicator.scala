@@ -18,21 +18,21 @@ object Deduplicator {
 
     findDuplicates()
 
-    diskChecksums.toList sortBy(_._2.head.info.name.toLowerCase()) foreach { tuple =>
-      val duplicates = sortDuplicates(tuple._2)
+    diskChecksums.toList sortBy(_._2.preferred.info.normalizedName) foreach { tuple =>
+      val duplicates = tuple._2
       val preferred = duplicates.preferred
 
       val unsureDups =
         if (options.allowByName) Nil
         else {
-          val disks = preferred :: duplicates.others ::: duplicates.excluded
-          val names = disks.map(dup => dup.info.atomicName).toSet
+          val disks = duplicates.disks
+          val names = disks.map(dup => dup.info.normalizedName).toSet
 
           def isInDisks(disk: Disk) =
             disks.exists(_.info.path.compareTo(disk.info.path) == 0)
 
           names.toList flatMap { name =>
-            diskNames(name) filterNot(isInDisks(_))
+            diskNames(name).disks filterNot(isInDisks(_))
           } groupBy(_.info.path) map(_._2.head.info)
         }
       val unsure = !unsureDups.isEmpty
@@ -42,9 +42,9 @@ object Deduplicator {
         checkFormat(dup.info, unsure)
 
       if (duplicates.others.isEmpty && duplicates.excluded.isEmpty && !unsure)
-        println(s"Name: ${preferred.info.name}; Path: ${preferred.info.path}")
+        println(s"Name: ${preferred.info.normalizedName}; Path: ${preferred.info.path}")
       else {
-        println(s"Name: ${preferred.info.name}")
+        println(s"Name: ${preferred.info.normalizedName}")
         println(s"  Preferred: ${preferred.info}")
       }
       if (!duplicates.others.isEmpty)
