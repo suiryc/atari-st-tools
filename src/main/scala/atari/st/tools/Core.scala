@@ -121,8 +121,16 @@ object Core {
       if (info.nameFormatter.isDefined) pointsRef
       else 0
 
+    def pointsNormalizedName(info: DiskInfo) =
+      /* we prefer exact match */
+      if (info.normalizedName == info.atomicName) pointsRef
+      /* then case insensitive match */
+      else if (info.atomicName.toLowerCase == info.normalizedName.toLowerCase) pointsRef / 2
+      else 0
+
     def points(info: DiskInfo) =
-      pointsNameDepth(info.name) + pointsName(info.name, info.path) + pointsPath(info.path) + pointsFormatter(info)
+      pointsNameDepth(info.name) + pointsName(info.name, info.path) +
+      pointsPath(info.path) + pointsFormatter(info) + pointsNormalizedName(info)
 
     if (duplicates.length > 1) {
       /* sort by preferred format */
