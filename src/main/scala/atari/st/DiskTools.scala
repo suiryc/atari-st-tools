@@ -99,11 +99,11 @@ object DiskTools extends App {
     cmd("convert") text("convert disk image") action { (_, c) =>
       c.copy(mode = AppMode.convert)
     } children(
+      dryRun(),
       opt[String]("to") text("output type") action { (v, c) =>
         c.copy(outputType = DiskType(v))
       },
-      /* XXX */
-      //zip(),
+      zip(),
       zipCharset(),
       source()
     )

@@ -55,7 +55,7 @@ object Normalizer {
         else path
 
       if (options.zip) {
-        println(s"Zip disk[$normalizedPath]")
+        println(s"Zip disk image[$normalizedPath]")
         if (!options.dryRun)
           Zip.zip(normalizedPath)
       }
@@ -149,6 +149,7 @@ object Normalizer {
         val normalizedPath = Util.findTarget(target)
 
         /* XXX - configurable input/output buffer size ? */
+        /* XXX - for dryRun, use OutputStream that does nothing ? */
         val output =
           if (options.dryRun) new ByteArrayOutputStream()
           else new BufferedOutputStream(new FileOutputStream(normalizedPath.toFile))
@@ -212,7 +213,7 @@ object Normalizer {
             /* not a disk image, nothing else to do */
 
           case _ =>
-            println(s"Zip disk[$path]")
+            println(s"Zip disk image[$path]")
             if (!options.dryRun)
               Zip.zip(path)
         }
