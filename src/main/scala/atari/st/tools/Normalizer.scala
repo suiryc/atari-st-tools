@@ -12,9 +12,8 @@ import java.io.{
   FileOutputStream
 }
 import java.nio.file.{Files, Path}
-import java.nio.file.attribute.{BasicFileAttributes, BasicFileAttributeView}
 import java.util.zip.{ZipEntry, ZipException, ZipFile, ZipOutputStream}
-import suiryc.scala.io.{IOStream, PathsEx}
+import suiryc.scala.io.{FilesEx, FileTimes, IOStream, PathsEx}
 
 
 object Normalizer {
@@ -160,10 +159,7 @@ object Normalizer {
           output.close()
 
           if (!options.dryRun) {
-            if (entry.getTime() > 0)
-              normalizedPath.toFile.setLastModified(entry.getTime())
-            val attrView = Files.getFileAttributeView(normalizedPath, classOf[BasicFileAttributeView])
-            attrView.setTimes(entry.getLastModifiedTime(), entry.getLastAccessTime(), entry.getCreationTime())
+            FilesEx.setTimes(normalizedPath, FileTimes(entry))
             /* XXX - keep access (read, write, execute) rights ? */
           }
 

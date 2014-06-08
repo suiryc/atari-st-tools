@@ -13,7 +13,7 @@ import java.io.{
 }
 import java.nio.charset.Charset
 import java.nio.file.Path
-import suiryc.scala.io.IOStream
+import suiryc.scala.io.{FilesEx, IOStream}
 
 
 object Converter {
@@ -62,6 +62,10 @@ object Converter {
         }
 
         println(s"Converted ${disk.info} to ${targetPath}")
+
+        if (!options.dryRun)
+          FilesEx.setTimes(targetPath, disk.info.times)
+
         if (options.zip) {
           println(s"Zip disk image[${targetPath}]")
           if (!options.dryRun)

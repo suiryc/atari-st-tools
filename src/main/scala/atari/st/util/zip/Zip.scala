@@ -9,10 +9,9 @@ import java.io.{
   InputStream
 }
 import java.nio.charset.Charset
-import java.nio.file.{Files, Path}
-import java.nio.file.attribute.BasicFileAttributes
+import java.nio.file.Path
 import java.util.zip.{ZipEntry, ZipInputStream, ZipOutputStream}
-import suiryc.scala.io.{IOStream, PathsEx}
+import suiryc.scala.io.{FileTimes, IOStream, PathsEx}
 
 
 /* XXX - move to suiryc-scala-core ? */
@@ -78,22 +77,23 @@ object Zip {
 
   def zip(path: Path) {
     val filename = path.getFileName().toString
+    val times = FileTimes(path)
     val target = Util.findTarget(path.resolveSibling(s"${PathsEx.atomicName(filename)}.zip"))
     val input = new BufferedInputStream(new FileInputStream(path.toFile))
     val entry = new ZipEntry(filename)
 
-    val attr = Files.readAttributes(path, classOf[BasicFileAttributes])
-    if (attr.creationTime().toMillis() > 0)
-      entry.setCreationTime(attr.creationTime())
-    if (attr.lastModifiedTime().toMillis() > 0) {
-      entry.setLastModifiedTime(attr.lastModifiedTime())
-      entry.setTime(attr.lastModifiedTime().toMillis())
+    if (times.creation != null)
+      entry.setCreationTime(times.creation)
+    if (times.lastModified != null) {
+      entry.setTime(times.lastModified.toMillis())
+      /* Also set the extended timestamp field; standard date/time field:
+       *   - cannot have dates older than 1980-01-01
+       *   - 'only' have a 2s precision (1s for extended timestamp)
+       */
+      entry.setLastModifiedTime(times.lastModified)
     }
-    else {
-      entry.setTime(path.toFile().lastModified())
-    }
-    if (attr.lastAccessTime().toMillis() > 0)
-      entry.setLastAccessTime(attr.lastAccessTime())
+    if (times.lastAccess != null)
+      entry.setLastAccessTime(times.lastAccess)
     /* XXX - keep access (read, write, execute) rights ? */
 
     val output = new ZipOutputStream(new BufferedOutputStream(new FileOutputStream(target.toFile)))

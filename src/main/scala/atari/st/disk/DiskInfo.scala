@@ -10,7 +10,7 @@ import java.security.MessageDigest
 import java.util.zip.{ZipEntry, ZipException, ZipFile}
 import scala.language.postfixOps
 import scala.util.matching.Regex
-import suiryc.scala.io.PathsEx
+import suiryc.scala.io.{FileTimes, PathsEx}
 import suiryc.scala.misc.EnumerationEx
 
 
@@ -25,10 +25,14 @@ case class DiskInfo(
   path: Path,
   name: String,
   kind: DiskType.Value,
+  times: FileTimes,
   format: DiskFormat,
   checksum: String,
   bootSector: BootSector
 ) {
+
+  override def toString: String =
+    s"DiskInfo($path,$name,$checksum,$format,$bootSector,${times.lastModified})"
 
   val atomicName = PathsEx.atomicName(name)
 
@@ -88,7 +92,7 @@ case class DiskInfo(
 
 object DiskInfo {
 
-  def apply(path: Path, name: String, kind: DiskType.Value, input: InputStream, size: Int): Either[Exception, DiskInfo] =
+  def apply(path: Path, name: String, kind: DiskType.Value, times: FileTimes, input: InputStream, size: Int): Either[Exception, DiskInfo] =
     kind match {
       case DiskType.ST =>
         try {
@@ -96,7 +100,7 @@ object DiskInfo {
           val bootSector = DiskImage.readBootSector(data)
           val format = DiskFormat(bootSector, size)
           val imageStream = DiskImage.dataToStream(data)
-          Right(DiskInfo(path, name, kind, format, computeChecksum(imageStream), bootSector))
+          Right(DiskInfo(path, name, kind, times, format, computeChecksum(imageStream), bootSector))
         }
         catch {
           case ex: Exception =>
@@ -108,8 +112,9 @@ object DiskInfo {
           val msa = new MSAInputDisk(input)
           val data = DiskImage.loadImage(msa.filtered, msa.size)
           val bootSector = DiskImage.readBootSector(data)
+          val format = DiskFormat(msa.sectors, msa.tracks, msa.sectorsPerTrack, msa.sides)
           val imageStream = DiskImage.dataToStream(data)
-          Right(DiskInfo(path, name, kind, DiskFormat(msa.sectors, msa.tracks, msa.sectorsPerTrack, msa.sides), computeChecksum(imageStream), bootSector))
+          Right(DiskInfo(path, name, kind, times, format, computeChecksum(imageStream), bootSector))
         }
         catch {
           case ex: Exception =>
@@ -118,8 +123,8 @@ object DiskInfo {
     }
 
   def apply(path: Path, zipAllowDiskName: Boolean, zipAllowExtra: List[Regex])(implicit zipCharset: Charset): Either[Exception, DiskInfo] = {
-    def build(name: String, kind: DiskType.Value, input: InputStream, size: Int): Either[Exception, DiskInfo] = {
-      val r = DiskInfo(path, name, kind, input, size)
+    def build(name: String, kind: DiskType.Value, times: FileTimes, input: InputStream, size: Int): Either[Exception, DiskInfo] = {
+      val r = DiskInfo(path, name, kind, times, input, size)
       input.close()
       r
     }
@@ -147,7 +152,7 @@ object DiskInfo {
                 /* Continue until we find the entry */
                 val found = (_entry.getName() == entry.getName())
                 val value =
-                  if (found) Some(build(entry.getName(), t, input, entry.getSize().intValue()))
+                  if (found) Some(build(entry.getName(), t, FileTimes(entry), input, entry.getSize().intValue()))
                   else None
                 (value, !found)
               }) collectFirst {
@@ -169,8 +174,12 @@ object DiskInfo {
       }
     }
     else imageType(PathsEx.extension(path.getFileName.toString)) match {
-      case DiskType.Unknown => Left(new Exception("Unknown disk type"))
-      case t => build(path.getFileName.toString, t, new BufferedInputStream(new FileInputStream(path.toFile)), path.toFile.length().intValue())
+      case DiskType.Unknown =>
+        Left(new Exception("Unknown disk type"))
+
+      case t =>
+        val input = new BufferedInputStream(new FileInputStream(path.toFile))
+        build(path.getFileName.toString, t, FileTimes(path), input, path.toFile.length().intValue())
     }
   }
 
