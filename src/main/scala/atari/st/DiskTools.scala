@@ -2,7 +2,7 @@ package atari.st
 
 import atari.st.disk.DiskType
 import atari.st.settings.Settings
-import atari.st.tools.{Converter, Deduplicator, Inspector, Normalizer, Tester}
+import atari.st.tools.{Converter, Deduplicator, Normalizer, Tester}
 import java.nio.charset.{Charset, StandardCharsets}
 import java.nio.file.{Path, Paths}
 import scala.util.matching.Regex
@@ -21,7 +21,6 @@ object DiskTools extends App {
   case class AppOptions(
     allowByName: Boolean = false,
     checkBootSector: Boolean = Settings.core.checkBootSector,
-    byName: Boolean = false,
     dryRun: Boolean = false,
     mode: AppMode.Value = AppMode.test,
     outputPreferred: Path = Settings.core.outputPreferred,
@@ -46,6 +45,9 @@ object DiskTools extends App {
 
   val parser = new scopt.OptionParser[AppOptions]("TestST") {
     help("help") text("print help")
+    val allowByName = () => opt[Unit]("allow-by-name") text("allow duplicates by name (but not by checksum)") action { (_, c) =>
+      c.copy(allowByName = true)
+    }
     opt[Unit]("check-boot-sector") text("check boot sector") action { (_, c) =>
       c.copy(checkBootSector = true)
     }
@@ -109,11 +111,9 @@ object DiskTools extends App {
     )
 
     cmd("deduplicate") text("deduplicate") action { (_, c) =>
-      c.copy(mode = AppMode.deduplicate, byName = true)
+      c.copy(mode = AppMode.deduplicate)
     } children(
-      opt[Unit]("allow-by-name") text("allow duplicates by name (but not by checksum)") action { (_, c) =>
-        c.copy(allowByName = true)
-      },
+      allowByName(),
       dryRun(),
       zipCharset(),
       source()
@@ -122,9 +122,7 @@ object DiskTools extends App {
     cmd("inspect") text("inspect disks") action { (_, c) =>
       c.copy(mode = AppMode.inspect)
     } children(
-      opt[Unit]("by-name") text("also show duplicates by name") action { (_, c) =>
-        c.copy(byName = true)
-      },
+      allowByName(),
       opt[Unit]("show-duplicates") text("show duplicate disks") action { (_, c) =>
         c.copy(showDuplicates = true)
       },
@@ -181,11 +179,11 @@ object DiskTools extends App {
   }
 
   def deduplicate() {
-    Deduplicator.deduplicate()
+    Deduplicator.deduplicate(inspect = false)
   }
 
   def inspect() {
-    Inspector.inspect()
+    Deduplicator.deduplicate(inspect = true)
   }
 
   def normalize() {

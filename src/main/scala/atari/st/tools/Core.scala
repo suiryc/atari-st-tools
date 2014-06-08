@@ -91,8 +91,7 @@ object Core {
     println("Searching duplicates ...")
     disks foreach { disk =>
       updateDuplicates(diskChecksums, disk.info.checksum, disk)
-      if (options.byName)
-        updateDuplicates(diskNames, disk.info.normalizedName, disk)
+      updateDuplicates(diskNames, disk.info.normalizedName, disk)
     }
   }
 
