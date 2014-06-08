@@ -43,7 +43,7 @@ object DiskTools extends App {
   println(s"********** Started: ${new java.util.Date}")
   println(s"Args: ${args.toList}")
 
-  val parser = new scopt.OptionParser[AppOptions]("TestST") {
+  val parser = new scopt.OptionParser[AppOptions]("DiskTools") {
     help("help") text("print help")
     val allowByName = () => opt[Unit]("allow-by-name") text("allow duplicates by name (but not by checksum)") action { (_, c) =>
       c.copy(allowByName = true)
