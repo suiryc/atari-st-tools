@@ -9,6 +9,7 @@ import java.io.{
 }
 import java.nio.charset.Charset
 import java.nio.file.Path
+import suiryc.scala.io.IOStream
 
 
 object Converter {
@@ -36,7 +37,7 @@ object Converter {
 
       outputType match {
         case DiskType.ST =>
-          val (output, _) = Util.transfer(input, outputStream())
+          val (output, _) = IOStream.transfer(input, outputStream())
           output.flush()
           output.close()
 
@@ -44,7 +45,7 @@ object Converter {
           disk.info.format match {
             case format: StandardDiskFormat =>
               val msa = new MSAOutputDisk(outputStream(), format)
-              val (output, _) = Util.transfer(input, msa.filtered)
+              val (output, _) = IOStream.transfer(input, msa.filtered)
               output.checkComplete()
               output.flush()
               output.close()

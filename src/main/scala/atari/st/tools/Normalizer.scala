@@ -13,6 +13,7 @@ import java.io.{
 import java.nio.file.{Files, Path}
 import java.nio.file.attribute.{BasicFileAttributes, BasicFileAttributeView}
 import java.util.zip.{ZipEntry, ZipException, ZipFile, ZipOutputStream}
+import suiryc.scala.io.IOStream
 
 
 object Normalizer {
@@ -151,7 +152,7 @@ object Normalizer {
           else new BufferedOutputStream(new FileOutputStream(normalizedPath.toFile))
         created :+= normalizedPath
         val (_, size) = try {
-          val r = Util.transfer(input, output)
+          val r = IOStream.transfer(input, output)
           output.flush()
           output.close()
 
@@ -239,7 +240,7 @@ object Normalizer {
       /* XXX - keep access (read, write, execute) rights ? */
 
       output.putNextEntry(entry)
-      Util.transfer(input, output)
+      IOStream.transfer(input, output)
       output.closeEntry()
       output.finish()
       output.flush()
