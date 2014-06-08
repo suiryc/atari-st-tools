@@ -5,7 +5,7 @@ import atari.st.disk.{Disk, DiskInfo, StandardDiskFormat, UnknownDiskFormat}
 import atari.st.disk.exceptions.NoDiskInZipException
 import java.nio.file.{Files, Path}
 import scala.collection.mutable
-import suiryc.scala.io.PathFinder
+import suiryc.scala.io.{PathFinder, PathsEx}
 import suiryc.scala.io.NameFilter._
 
 
@@ -103,7 +103,7 @@ object Core {
       pointsRef + 1 - name.split("/").length
 
     def pointsName(name: String, path: Path) = {
-      val shortName = DiskInfo.atomicName(name)
+      val shortName = PathsEx.atomicName(name)
 
       /* we prefer exact match */
       if (path.getFileName().toString.startsWith(s"${shortName}.")) pointsRef

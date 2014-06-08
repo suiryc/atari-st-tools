@@ -1,11 +1,21 @@
 package atari.st.util.zip
 
-import java.io.{BufferedInputStream, FileInputStream, InputStream}
+import atari.st.util.Util
+import java.io.{
+  BufferedInputStream,
+  BufferedOutputStream,
+  FileInputStream,
+  FileOutputStream,
+  InputStream
+}
 import java.nio.charset.Charset
-import java.nio.file.Path
-import java.util.zip.{ZipEntry, ZipInputStream}
+import java.nio.file.{Files, Path}
+import java.nio.file.attribute.BasicFileAttributes
+import java.util.zip.{ZipEntry, ZipInputStream, ZipOutputStream}
+import suiryc.scala.io.{IOStream, PathsEx}
 
 
+/* XXX - move to suiryc-scala-core ? */
 object Zip {
 
   /* Note: ZipFile does not (and does not let us) check the CRC of read entry */
@@ -64,6 +74,46 @@ object Zip {
         input.close()
       }
     } getOrElse(Nil)
+  }
+
+  def zip(path: Path) {
+    val filename = path.getFileName().toString
+    val target = Util.findTarget(path.resolveSibling(s"${PathsEx.atomicName(filename)}.zip"))
+    val input = new BufferedInputStream(new FileInputStream(path.toFile))
+    val entry = new ZipEntry(filename)
+
+    val attr = Files.readAttributes(path, classOf[BasicFileAttributes])
+    if (attr.creationTime().toMillis() > 0)
+      entry.setCreationTime(attr.creationTime())
+    if (attr.lastModifiedTime().toMillis() > 0) {
+      entry.setLastModifiedTime(attr.lastModifiedTime())
+      entry.setTime(attr.lastModifiedTime().toMillis())
+    }
+    else {
+      entry.setTime(path.toFile().lastModified())
+    }
+    if (attr.lastAccessTime().toMillis() > 0)
+      entry.setLastAccessTime(attr.lastAccessTime())
+    /* XXX - keep access (read, write, execute) rights ? */
+
+    val output = new ZipOutputStream(new BufferedOutputStream(new FileOutputStream(target.toFile)))
+    try {
+      output.putNextEntry(entry)
+      IOStream.transfer(input, output)
+      output.closeEntry()
+      output.finish()
+      output.flush()
+      output.close()
+    }
+    catch {
+      case ex: Throwable =>
+        /* Delete created file */
+        target.toFile.delete()
+        throw ex
+    }
+
+    /* Delete source file */
+    path.toFile.delete()
   }
 
 }

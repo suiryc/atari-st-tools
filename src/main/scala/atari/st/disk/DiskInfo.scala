@@ -10,6 +10,7 @@ import java.security.MessageDigest
 import java.util.zip.{ZipEntry, ZipException, ZipFile}
 import scala.language.postfixOps
 import scala.util.matching.Regex
+import suiryc.scala.io.PathsEx
 import suiryc.scala.misc.EnumerationEx
 
 
@@ -29,9 +30,7 @@ case class DiskInfo(
   bootSector: BootSector
 ) {
 
-  import DiskInfo._
-
-  val atomicName = DiskInfo.atomicName(name)
+  val atomicName = PathsEx.atomicName(name)
 
   val nameFormatter =
     DiskInfo.nameFormatter(atomicName)
@@ -59,7 +58,7 @@ case class DiskInfo(
       r
     }
 
-    if (extension(path.getFileName().toString).toLowerCase == "zip") {
+    if (PathsEx.extension(path.getFileName().toString).toLowerCase == "zip") {
       import scala.collection.JavaConversions._
 
       val zip = new ZipFile(path.toFile, zipCharset)
@@ -125,7 +124,7 @@ object DiskInfo {
       r
     }
 
-    if (extension(path.getFileName().toString).toLowerCase == "zip") {
+    if (PathsEx.extension(path.getFileName().toString).toLowerCase == "zip") {
       import scala.collection.JavaConversions._
 
       try {
@@ -139,7 +138,7 @@ object DiskInfo {
         else if (entries.extraUnknown.length > 0) Left(new Exception("Zip contains unknown extra entries"))
         else {
           val entry = entries.disks.head.entry
-          imageType(extension(entry.getName())) match {
+          imageType(PathsEx.extension(entry.getName())) match {
             case DiskType.Unknown =>
               Left(new Exception("Unknown disk type"))
 
@@ -169,7 +168,7 @@ object DiskInfo {
           Left(new Exception("Invalid zip file", ex))
       }
     }
-    else imageType(extension(path.getFileName.toString)) match {
+    else imageType(PathsEx.extension(path.getFileName.toString)) match {
       case DiskType.Unknown => Left(new Exception("Unknown disk type"))
       case t => build(path.getFileName.toString, t, new BufferedInputStream(new FileInputStream(path.toFile)), path.toFile.length().intValue())
     }
@@ -182,7 +181,7 @@ object DiskInfo {
     import scala.collection.JavaConversions._
 
     val tuples = zip.entries().toList filterNot(_.isDirectory) sortBy(_.getName.toLowerCase) map { entry =>
-      (entry, imageType(extension(entry.getName())))
+      (entry, imageType(PathsEx.extension(entry.getName())))
     }
     val (knownTuples, otherTuples) = tuples.partition(_._2 != DiskType.Unknown)
     val disks = knownTuples map { tuple =>
@@ -192,26 +191,14 @@ object DiskInfo {
     val (extraAllowed, extraUnknown) = otherTuples map(_._1) partition { entry =>
       val entryName = entry.getName()
       (zipAllowExtra exists { regex =>
-        regex.pattern.matcher(filename(entryName)).matches()
+        regex.pattern.matcher(PathsEx.filename(entryName)).matches()
       }) || (zipAllowDiskName && diskEntry.exists { diskEntry =>
-        atomicName(entryName).toLowerCase == atomicName(diskEntry.getName().toLowerCase)
+        PathsEx.atomicName(entryName).toLowerCase == PathsEx.atomicName(diskEntry.getName().toLowerCase)
       })
     }
 
     ZipEntries(tuples.length, disks, extraAllowed, extraUnknown)
   }
-
-  def filename(name: String) =
-    name.split("/").toList.reverse.head
-
-  def atomicName(name: String) =
-    /* keep filename */
-    filename(name).
-      /* without extension */
-      split("""\.""").reverse.tail.reverse.mkString(".")
-
-  def extension(name: String) =
-    name.split("""\.""").toList.reverse.head
 
   def nameFormatter(name: String) =
     Settings.core.diskNameFormatters find { formatter =>

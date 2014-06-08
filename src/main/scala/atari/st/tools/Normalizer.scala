@@ -14,7 +14,7 @@ import java.io.{
 import java.nio.file.{Files, Path}
 import java.nio.file.attribute.{BasicFileAttributes, BasicFileAttributeView}
 import java.util.zip.{ZipEntry, ZipException, ZipFile, ZipOutputStream}
-import suiryc.scala.io.IOStream
+import suiryc.scala.io.{IOStream, PathsEx}
 
 
 object Normalizer {
@@ -39,7 +39,7 @@ object Normalizer {
 
   def process(path: Path) {
     val filename = path.getFileName.toString
-    if (DiskInfo.extension(filename).toLowerCase == "zip") {
+    if (PathsEx.extension(filename).toLowerCase == "zip") {
       processZip(path)
     }
     else {
@@ -56,7 +56,8 @@ object Normalizer {
 
       if (options.zip) {
         println(s"Zip disk[$normalizedPath]")
-        zipPath(normalizedPath)
+        if (!options.dryRun)
+          Zip.zip(normalizedPath)
       }
     }
   }
@@ -72,9 +73,9 @@ object Normalizer {
           val normalized = normalizeFilename(entry.getName())
           (entry, normalized)
         }
-        val diskName = DiskInfo.atomicName(normalizedDisks.head._2)
+        val diskName = PathsEx.atomicName(normalizedDisks.head._2)
         val normalizedExtra = entries.extraAllowed map { entry =>
-          val normalized = s"${diskName}-${DiskInfo.filename(entry.getName()).toLowerCase}"
+          val normalized = s"${diskName}-${PathsEx.filename(entry.getName()).toLowerCase}"
           (entry, normalized)
         }
         val normalizedEntries = normalizedDisks ::: normalizedExtra
@@ -206,54 +207,22 @@ object Normalizer {
 
     if (options.zip) {
       created foreach { path =>
-        DiskInfo.imageType(DiskInfo.extension(path.getFileName.toString)) match {
+        DiskInfo.imageType(PathsEx.extension(path.getFileName.toString)) match {
           case DiskType.Unknown =>
             /* not a disk image, nothing else to do */
 
           case _ =>
             println(s"Zip disk[$path]")
-            zipPath(path)
+            if (!options.dryRun)
+              Zip.zip(path)
         }
       }
     }
   }
 
-  def zipPath(path: Path) {
-    if (!options.dryRun) {
-      val filename = path.getFileName().toString
-      val target = Util.findTarget(path.resolveSibling(s"${DiskInfo.atomicName(filename)}.zip"))
-      val input = new BufferedInputStream(new FileInputStream(path.toFile))
-      val output = new ZipOutputStream(new BufferedOutputStream(new FileOutputStream(target.toFile)))
-      val entry = new ZipEntry(filename)
-
-      val attr = Files.readAttributes(path, classOf[BasicFileAttributes])
-      if (attr.creationTime().toMillis() > 0)
-        entry.setCreationTime(attr.creationTime())
-      if (attr.lastModifiedTime().toMillis() > 0) {
-        entry.setLastModifiedTime(attr.lastModifiedTime())
-        entry.setTime(attr.lastModifiedTime().toMillis())
-      }
-      else {
-        entry.setTime(path.toFile().lastModified())
-      }
-      if (attr.lastAccessTime().toMillis() > 0)
-        entry.setLastAccessTime(attr.lastAccessTime())
-      /* XXX - keep access (read, write, execute) rights ? */
-
-      output.putNextEntry(entry)
-      IOStream.transfer(input, output)
-      output.closeEntry()
-      output.finish()
-      output.flush()
-      output.close()
-
-      path.toFile.delete()
-    }
-  }
-
   def normalizeFilename(name: String) = {
-    val diskName = DiskInfo.atomicName(name)
-    val extension = DiskInfo.extension(name).toLowerCase
+    val diskName = PathsEx.atomicName(name)
+    val extension = PathsEx.extension(name).toLowerCase
     val formatter = nameFormatter(diskName)
 
     val normalized = s"${formatter.normalize(diskName)}.${extension}"
