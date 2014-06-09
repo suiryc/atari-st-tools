@@ -222,6 +222,7 @@ object DiskInfo {
       case _: Throwable => DiskType.Unknown
     }
 
+  /* Computes checksum (upper-case) of given input. */
   def computeChecksum(stream: InputStream): String = {
     val buffer = new Array[Byte](1024 * 16)
     val msgDigest = MessageDigest.getInstance("MD5")

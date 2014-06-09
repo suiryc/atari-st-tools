@@ -1,7 +1,13 @@
 package atari.st.tools
 
 import atari.st.DiskTools
-import atari.st.disk.{Disk, DiskInfo, StandardDiskFormat, UnknownDiskFormat}
+import atari.st.disk.{
+  Disk,
+  DiskInfo,
+  Duplicates,
+  StandardDiskFormat,
+  UnknownDiskFormat
+}
 import atari.st.disk.exceptions.NoDiskInZipException
 import java.nio.file.{Files, Path}
 import scala.collection.mutable
@@ -13,10 +19,6 @@ object Core {
 
   val options = DiskTools.options
   implicit val charset = options.zipCharset
-
-  case class Duplicates(preferred: Disk, others: List[Disk], excluded: List[Disk]) {
-    lazy val disks = preferred :: others ::: excluded
-  }
 
   val diskChecksums = mutable.Map[String, Duplicates]()
   val diskNames = mutable.Map[String, Duplicates]()

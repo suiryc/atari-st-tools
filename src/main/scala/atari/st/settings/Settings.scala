@@ -1,6 +1,6 @@
 package atari.st.settings
 
-import atari.st.disk.RegexDiskNameFormatter
+import atari.st.disk.{ByNameDuplicates, RegexDiskNameFormatter}
 import com.typesafe.config.{Config, ConfigFactory}
 import java.nio.charset.Charset
 import scala.collection.JavaConversions._
@@ -62,5 +62,17 @@ class Settings(
   val outputOthers = outputRoot.resolve(outputRelativeOthers)
   val outputRelativeConverted = value[String]("output.converted")
   val outputConverted = outputRoot.resolve(outputRelativeConverted)
+
+  val duplicatesByName = config.getAnyRefList("duplicates.by-name").toList map { el =>
+    import java.util.ArrayList
+
+    val dups = el.asInstanceOf[ArrayList[ArrayList[String]]]
+    val keep = dups.get(0).map(_.toUpperCase).toSet
+    val drop = dups.get(1).map(_.toUpperCase).toSet
+    val byNameDups = new ByNameDuplicates(keep, drop)
+    (keep ++ drop).map { checksum =>
+      (checksum, byNameDups)
+    }.toMap
+  } reduceLeft(_ ++ _)
 
 }
