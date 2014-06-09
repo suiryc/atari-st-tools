@@ -9,6 +9,7 @@ import atari.st.disk.{
   UnknownDiskFormat
 }
 import atari.st.disk.exceptions.NoDiskInZipException
+import atari.st.settings.Settings
 import java.nio.file.{Files, Path}
 import scala.collection.mutable
 import suiryc.scala.io.{PathFinder, PathsEx}
@@ -97,7 +98,7 @@ object Core {
     }
   }
 
-  def sortDuplicates(duplicates: List[Disk]): Duplicates = {
+  def sortDuplicates(duplicates: List[Disk], exclude: Boolean = true): Duplicates = {
     val pointsRef = scala.math.max(options.sources.length, 2)
 
     def pointsNameDepth(name: String) =
@@ -117,7 +118,8 @@ object Core {
       path.getFileName().toString().length()
 
     def pointsPath(path: Path) =
-      pointsRef - options.sources.map(path.startsWith(_)).zipWithIndex.find(_._1).map(_._2).getOrElse(pointsRef - 1) - 1
+      pointsRef - 1 -
+      options.sources.map(path.startsWith(_)).zipWithIndex.find(_._1).map(_._2).getOrElse(pointsRef - 1)
 
     def pointsFormatter(info: DiskInfo) =
       if (info.nameFormatter.isDefined) pointsRef
@@ -135,11 +137,15 @@ object Core {
       pointsPath(info.path) + pointsFormatter(info) + pointsNormalizedName(info)
 
     if (duplicates.length > 1) {
-      /* sort by preferred format */
-      val sorted = duplicates.sortBy(_.info.kind.id).reverse
-      val sample1 = sorted.head.info
-      /* drop less rich disk types if any */
-      val (chosens, excluded) = sorted.partition(_.info.kind == sample1.kind)
+      val (chosens, excluded) =
+        if (!exclude) (duplicates, Nil)
+        else {
+          /* sort by preferred format */
+          val sorted = duplicates.sortBy(_.info.kind.id).reverse
+          val sample1 = sorted.head.info
+          /* drop less rich disk types if any */
+          sorted.partition(_.info.kind == sample1.kind)
+        }
       /* get the max points of duplicates */
       val sortedChosens = chosens.map(disk =>
         (disk, points(disk.info))

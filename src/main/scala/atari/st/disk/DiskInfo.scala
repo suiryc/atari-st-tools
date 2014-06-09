@@ -10,7 +10,7 @@ import java.security.MessageDigest
 import java.util.zip.{ZipEntry, ZipException, ZipFile}
 import scala.language.postfixOps
 import scala.util.matching.Regex
-import suiryc.scala.io.{FileTimes, PathsEx}
+import suiryc.scala.io.{FileTimes, IOStream, PathsEx}
 import suiryc.scala.misc.EnumerationEx
 
 
@@ -27,12 +27,15 @@ case class DiskInfo(
   kind: DiskType.Value,
   times: FileTimes,
   format: DiskFormat,
+  /** Disk checksum */
   checksum: String,
+  /** Disk without boot sector checksum */
+  checksum2: String,
   bootSector: BootSector
 ) {
 
   override def toString: String =
-    s"DiskInfo($path,$name,$checksum,$format,$bootSector,${times.lastModified})"
+    s"DiskInfo($path,$name,$checksum,$checksum2,$format,$bootSector,${times.lastModified})"
 
   val atomicName = PathsEx.atomicName(name)
 
@@ -62,7 +65,7 @@ case class DiskInfo(
       r
     }
 
-    if (PathsEx.extension(path.getFileName().toString).toLowerCase == "zip") {
+    if (PathsEx.extension(path).toLowerCase == "zip") {
       import scala.collection.JavaConversions._
 
       val zip = new ZipFile(path.toFile, zipCharset)
@@ -100,7 +103,8 @@ object DiskInfo {
           val bootSector = DiskImage.readBootSector(data)
           val format = DiskFormat(bootSector, size)
           val imageStream = DiskImage.dataToStream(data)
-          Right(DiskInfo(path, name, kind, times, format, computeChecksum(imageStream), bootSector))
+          val (checksum, checksum2) = computeChecksum(imageStream)
+          Right(DiskInfo(path, name, kind, times, format, checksum, checksum2, bootSector))
         }
         catch {
           case ex: Exception =>
@@ -114,7 +118,8 @@ object DiskInfo {
           val bootSector = DiskImage.readBootSector(data)
           val format = DiskFormat(msa.sectors, msa.tracks, msa.sectorsPerTrack, msa.sides)
           val imageStream = DiskImage.dataToStream(data)
-          Right(DiskInfo(path, name, kind, times, format, computeChecksum(imageStream), bootSector))
+          val (checksum, checksum2) = computeChecksum(imageStream)
+          Right(DiskInfo(path, name, kind, times, format, checksum, checksum2, bootSector))
         }
         catch {
           case ex: Exception =>
@@ -129,7 +134,7 @@ object DiskInfo {
       r
     }
 
-    if (PathsEx.extension(path.getFileName().toString).toLowerCase == "zip") {
+    if (PathsEx.extension(path).toLowerCase == "zip") {
       import scala.collection.JavaConversions._
 
       try {
@@ -173,7 +178,7 @@ object DiskInfo {
           Left(new Exception("Invalid zip file", ex))
       }
     }
-    else imageType(PathsEx.extension(path.getFileName.toString)) match {
+    else imageType(PathsEx.extension(path)) match {
       case DiskType.Unknown =>
         Left(new Exception("Unknown disk type"))
 
@@ -222,17 +227,31 @@ object DiskInfo {
       case _: Throwable => DiskType.Unknown
     }
 
-  /* Computes checksum (upper-case) of given input. */
-  def computeChecksum(stream: InputStream): String = {
+  /* Computes checksums (upper-case) of given input. */
+  def computeChecksum(stream: InputStream): (String, String) = {
     val buffer = new Array[Byte](1024 * 16)
     val msgDigest = MessageDigest.getInstance("MD5")
+    val msgDigest2 = MessageDigest.getInstance("MD5")
 
+    /* Separately read the boot sector */
+    IOStream.readFully(stream, buffer, 0, DiskFormat.bytesPerSector)
+    msgDigest.update(buffer, 0, DiskFormat.bytesPerSector)
+    /* Then read the rest of the disk */
     Stream.continually(stream.read(buffer)).takeWhile(_ != -1) foreach { count =>
       msgDigest.update(buffer, 0, count)
+      msgDigest2.update(buffer, 0, count)
     }
-    msgDigest.digest().toList map { byte =>
-      f"$byte%02X"
-    } mkString
+
+    val checksum =
+      msgDigest.digest().toList map { byte =>
+        f"$byte%02X"
+      } mkString
+    val checksum2 =
+      msgDigest2.digest().toList map { byte =>
+        f"$byte%02X"
+      } mkString
+
+    (checksum, checksum2)
   }
 
 }

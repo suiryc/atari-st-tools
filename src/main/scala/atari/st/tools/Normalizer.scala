@@ -204,7 +204,7 @@ object Normalizer {
 
     if (options.zip) {
       created foreach { path =>
-        DiskInfo.imageType(PathsEx.extension(path.getFileName.toString)) match {
+        DiskInfo.imageType(PathsEx.extension(path)) match {
           case DiskType.Unknown =>
             /* not a disk image, nothing else to do */
 

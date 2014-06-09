@@ -8,11 +8,15 @@ import java.io.{ByteArrayInputStream, InputStream}
 
 
 case class BootSector(
+  data: Array[Byte],
   bytesPerSector: Int,
   sectors: Int,
   sectorsPerTrack: Int,
   sides: Int
 ) {
+
+  override def toString: String =
+    s"BootSector($bytesPerSector,$sectors,$sectorsPerTrack,$sides)"
 
   val tracks =
     if ((sectorsPerTrack <= 0) || (sides <= 0)) -1
@@ -67,7 +71,7 @@ object DiskImage {
     val sides = ProtocolStream.readInteger(input, BitSize.Short).intValue()
     input.close()
 
-    BootSector(bytesPerSector, sectors, sectorsPerTrack, sides)
+    BootSector(data.take(DiskFormat.bytesPerSector), bytesPerSector, sectors, sectorsPerTrack, sides)
   }
 
   def dataToStream(data: Array[Byte]) =

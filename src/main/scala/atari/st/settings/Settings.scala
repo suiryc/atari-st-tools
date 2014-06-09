@@ -58,21 +58,30 @@ class Settings(
   val outputRoot = PathsEx.get(value[String]("output.root"))
   val outputRelativePreferred = value[String]("output.preferred")
   val outputPreferred = outputRoot.resolve(outputRelativePreferred)
+  val outputRelativeAlternatives = value[String]("output.alternatives")
   val outputRelativeOthers = value[String]("output.others")
   val outputOthers = outputRoot.resolve(outputRelativeOthers)
   val outputRelativeConverted = value[String]("output.converted")
   val outputConverted = outputRoot.resolve(outputRelativeConverted)
 
+  val duplicateBootSectorAllow = value[Boolean]("duplicates.boot-sector.allow")
+  val duplicateBootSectorAlternativeImage = option[String]("duplicates.boot-sector.alternative-image")
+  val duplicateBootSectorAlternativeSector = option[String]("duplicates.boot-sector.alternative-sector")
   val duplicatesByName = config.getAnyRefList("duplicates.by-name").toList map { el =>
     import java.util.ArrayList
 
     val dups = el.asInstanceOf[ArrayList[ArrayList[String]]]
-    val keep = dups.get(0).map(_.toUpperCase).toSet
+    val keep = dups.get(0).map(_.toUpperCase)
     val drop = dups.get(1).map(_.toUpperCase).toSet
-    val byNameDups = new ByNameDuplicates(keep, drop)
+    val byNameDups = new ByNameDuplicates(keep.headOption.getOrElse(""), keep.toSet, drop)
     (keep ++ drop).map { checksum =>
       (checksum, byNameDups)
     }.toMap
   } reduceLeft(_ ++ _)
+
+  if (duplicateBootSectorAllow &&
+    duplicateBootSectorAlternativeImage.isEmpty &&
+    duplicateBootSectorAlternativeSector.isEmpty)
+    throw new Exception("When allowing duplicates with different boot sector, either alternative-image or alternative-sector option must be set")
 
 }
