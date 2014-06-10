@@ -68,7 +68,7 @@ object DiskTools extends App {
         outputConverted = outputRoot.resolve(Settings.core.outputRelativeConverted)
       )
     }
-    opt[Unit]('v', "verbose") text("increase verbosity level") action { (_, c) =>
+    opt[Unit]('v', "verbose") text("increase verbosity level") unbounded() action { (_, c) =>
       c.copy(verbose = c.verbose + 1)
     }
     opt[Unit]("warn-unknown-format") text("warn on unknown disk format") action { (_, c) =>
