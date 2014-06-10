@@ -241,6 +241,15 @@ object Deduplicator {
           if (options.verbose > 1)
             println(s"Saved ${disk.info.path} boot sector to ${target}")
         }
+
+      if (!options.dryRun) {
+        def delete(path: Path) {
+          if ((path.compareTo(disk.root) != 0) && path.toFile.delete)
+            delete(path.getParent)
+        }
+
+        delete(disk.info.path.getParent)
+      }
     }
 
     duplicates.disks foreach(moveDisk)
