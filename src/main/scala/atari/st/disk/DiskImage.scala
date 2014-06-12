@@ -7,23 +7,6 @@ import atari.st.disk.exceptions.{
 import java.io.{ByteArrayInputStream, InputStream}
 
 
-case class BootSector(
-  data: Array[Byte],
-  bytesPerSector: Int,
-  sectors: Int,
-  sectorsPerTrack: Int,
-  sides: Int
-) {
-
-  override def toString: String =
-    s"BootSector($bytesPerSector,$sectors,$sectorsPerTrack,$sides)"
-
-  val tracks =
-    if ((sectorsPerTrack <= 0) || (sides <= 0)) -1
-    else sectors / (sectorsPerTrack * sides)
-
-}
-
 class DiskImage(val data: Array[Byte], val info: DiskInfo) {
 
   def inputStream =

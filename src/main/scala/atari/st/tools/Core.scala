@@ -22,6 +22,7 @@ object Core {
   implicit val charset = options.zipCharset
 
   val diskChecksums = mutable.Map[String, Duplicates]()
+  /* XXX - do we really need/want to sort duplicates by name, and not just keep the list of disks ? */
   val diskNames = mutable.Map[String, Duplicates]()
 
   val knownNames = """(?i).*\.(?:st|msa|zip)"""
@@ -101,25 +102,25 @@ object Core {
   def sortDuplicates(duplicates: List[Disk], exclude: Boolean = true): Duplicates = {
     val pointsRef = scala.math.max(options.sources.length, 2)
 
-    def pointsNameDepth(name: String) =
-      pointsRef + 1 - name.split("/").length
+    def pointsNameDepth(info: DiskInfo) =
+      pointsRef + 1 - info.name.split("/").length
 
-    def pointsName(name: String, path: Path) = {
-      val shortName = PathsEx.atomicName(name)
+    def pointsName(info: DiskInfo) = {
+      val shortName = PathsEx.atomicName(info.name)
 
       /* we prefer exact match */
-      if (path.getFileName().toString.startsWith(s"${shortName}.")) pointsRef
+      if (info.path.getFileName().toString.startsWith(s"${shortName}.")) pointsRef
       /* then case insensitive match */
-      else if (path.getFileName().toString.toLowerCase.startsWith(s"${shortName.toLowerCase}.")) pointsRef / 2
+      else if (info.path.getFileName().toString.toLowerCase.startsWith(s"${shortName.toLowerCase}.")) pointsRef / 2
       else 0
     }
 
-    def pointsFileNameLength(path: Path) =
-      path.getFileName().toString().length()
+    def pointsFileNameLength(info: DiskInfo) =
+      info.path.getFileName().toString().length()
 
-    def pointsPath(path: Path) =
+    def pointsPath(info: DiskInfo) =
       pointsRef - 1 -
-      options.sources.map(path.startsWith(_)).zipWithIndex.find(_._1).map(_._2).getOrElse(pointsRef - 1)
+      options.sources.map(info.path.startsWith(_)).zipWithIndex.find(_._1).map(_._2).getOrElse(pointsRef - 1)
 
     def pointsFormatter(info: DiskInfo) =
       if (info.nameFormatter.isDefined) pointsRef
@@ -132,33 +133,69 @@ object Core {
       else if (info.atomicName.toLowerCase == info.normalizedName.toLowerCase) pointsRef / 2
       else 0
 
+    def pointsKnownDuplicate(info: DiskInfo) =
+      if (Settings.core.duplicatesByName.contains(info.checksum)) pointsRef
+      else 0
+
+    def pointsAlternative(info: DiskInfo) =
+      if (!folderIsAlternative(info.path)) 1
+      else 0
+
+    def pointsFormat(info: DiskInfo) =
+      info.kind.id
+
     def points(info: DiskInfo) =
-      pointsNameDepth(info.name) + pointsName(info.name, info.path) +
-      pointsPath(info.path) + pointsFormatter(info) + pointsNormalizedName(info)
+      pointsNameDepth(info) + pointsName(info) + pointsPath(info) +
+      pointsFormatter(info) + pointsNormalizedName(info)
 
     if (duplicates.length > 1) {
+      def sort(disks: List[Disk], f: (DiskInfo => Int)*): List[Disk] = {
+        def sortDiskList(disks: List[Disk], f: DiskInfo => Int): List[List[Disk]] =
+          if (disks.length == 1) List(disks)
+          else disks.groupBy(disk => f(disk.info)).toList.sortBy(_._1).reverse.map(_._2)
+
+        @scala.annotation.tailrec
+        def sortDiskLists(disks: List[List[Disk]], f: (DiskInfo => Int)*): List[Disk] = {
+          f.toList match {
+            case fhead :: ftail =>
+              val sorted = disks.flatMap(disks => sortDiskList(disks, fhead))
+              sortDiskLists(sorted, ftail:_*)
+
+            case Nil =>
+              disks.flatten
+          }
+        }
+
+        if (disks.length < 2) disks
+        else sortDiskLists(List(disks), f:_*)
+      }
+
       val (chosens, excluded) =
         if (!exclude) (duplicates, Nil)
         else {
-          /* sort by preferred format */
-          val sorted = duplicates.sortBy(_.info.kind.id).reverse
-          val sample1 = sorted.head.info
-          /* drop less rich disk types if any */
-          sorted.partition(_.info.kind == sample1.kind)
+          /* sort by preferred format, drop less rich disk types if any */
+          val kind = sort(duplicates, pointsFormat).head.info.kind
+          duplicates.partition(_.info.kind == kind)
         }
-      /* get the max points of duplicates */
-      val sortedChosens = chosens.map(disk =>
-        (disk, points(disk.info))
-      ).sortBy(_._2).reverse
-      /* and keep the max one, or settle for the one with the longest filename
-       * (supposed to be more informational) */
-      val preferredPoints = sortedChosens.head._2
-      val preferred = sortedChosens.takeWhile(_._2 == preferredPoints).sortBy(tuple => pointsFileNameLength(tuple._1.info.path)).reverse.head._1
-      val others = chosens.filterNot(_ eq preferred)
 
-      Duplicates(preferred, others, excluded)
+      /* Sort and discriminate in the following order:
+       *   - known checksum: only matters when comparing different checksums
+       *   - given points: general sorting
+       *   - the longest filename: supposed to be more informational
+       *   - not in an 'alternative' folder
+       *   - richest format
+       */
+      val sorted = sort(chosens, pointsKnownDuplicate, points,
+        pointsFileNameLength, pointsAlternative, pointsFormat)
+
+      Duplicates(sorted.head, sorted.tail, excluded)
     }
     else Duplicates(duplicates.head, Nil, Nil)
+  }
+
+  def folderIsAlternative(path: Path): Boolean = {
+    val name = path.getFileName.toString
+    (name == Settings.core.outputRelativeAlternatives) || (name.startsWith(s"${Settings.core.outputRelativeAlternatives}."))
   }
 
   def checkFormat(info: DiskInfo, force: Boolean = false) {

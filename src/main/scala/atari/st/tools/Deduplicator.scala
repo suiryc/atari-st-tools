@@ -16,17 +16,17 @@ object Deduplicator {
     /** Deduplication status */
     status: DuplicateStatus.Value,
     /** Whether this is an alternative disk */
-    alternative: Boolean,
+    alternative: Boolean = false,
     /** Whether this is an alternative boot sector */
-    alternativeBootSector: Boolean,
+    alternativeBootSector: Boolean = false,
     /** By-name duplicates checksums that would be kept if present */
-    wouldKeep: Set[String],
+    wouldKeep: Set[String] = Set.empty,
     /** By-name duplicates that are actually kept */
-    keptChecksums: Set[String],
+    keptChecksums: Set[String] = Set.empty,
     /** By-name duplicates that are actually dropped */
-    droppedChecksums: Set[String],
+    droppedChecksums: Set[String] = Set.empty,
     /** Unsure by-name duplicates */
-    unsure: List[Disk]
+    unsure: List[Disk] = Nil
   ) {
 
     def isUnsure =
@@ -114,11 +114,11 @@ object Deduplicator {
      * actually unsure.
      */
 
-    def decideGeneric: DeduplicationInfo =
+    def decide: DeduplicationInfo =
       /* If duplicates by name are allowed, there is no unsure duplicate and
        * we keep this disk. */
       if (options.allowByName)
-        DeduplicationInfo(DuplicateStatus.keep, false, false, Set.empty, Set.empty, Set.empty, Nil)
+        DeduplicationInfo(DuplicateStatus.keep)
       else {
         val disks = duplicates.disks
         val names = disks.map(_.info.normalizedName).toSet
@@ -132,63 +132,99 @@ object Deduplicator {
             diskNames(name).disks filterNot(isInDisks(_))
           } groupBy(_.info.path) map(_._2.head)
 
-        val status =
-          if (unsure.size > 0) DuplicateStatus.unsure
-          else DuplicateStatus.keep
-        DeduplicationInfo(status, false, false, Set.empty, Set.empty, Set.empty, unsure.toList)
+        if (unsure.size > 0)
+          decideByChecksum(DeduplicationInfo(DuplicateStatus.unsure, unsure = unsure.toList))
+        else
+          DeduplicationInfo(DuplicateStatus.keep)
       }
 
     def decideByChecksum(dedupInfo: DeduplicationInfo): DeduplicationInfo =
       if (!dedupInfo.isUnsure) dedupInfo
       else Settings.core.duplicatesByName.get(checksum) map { dupsByName =>
         /* Checksum is known, check for actually unsure duplicates */
-        val unsure = dedupInfo.unsure.filter { dup =>
-          dupsByName.status(dup.info.checksum) == DuplicateStatus.unsure
+        val unsure =
+          dedupInfo.unsure filter { dup =>
+            /* First keep only those not known */
+            dupsByName.status(dup.info.checksum) == DuplicateStatus.unsure
+          } filterNot { unsureDisk =>
+            /* Then drop those that actually are duplicates (only serial number
+             * differs) of known disks. */
+            if (!options.duplicateBootSectorAllow) false
+            else (dupsByName.kept ++ dupsByName.dropped) exists { knownChecksum =>
+              diskChecksums.get(knownChecksum) map { knownDuplicates =>
+                (knownDuplicates.preferred.info.checksum2 == unsureDisk.info.checksum2) &&
+                (knownDuplicates.preferred.info.bootSector.checksum == unsureDisk.info.bootSector.checksum)
+              } getOrElse(false)
+            }
+          }
+
+        if (unsure.size > 0) dedupInfo.copy(unsure = unsure)
+        else {
+          val dupsCkecksums = dedupInfo.unsure.map(_.info.checksum).toSet
+
+          dedupInfo.copy(
+            status = dupsByName.status(checksum),
+            alternative = dupsByName.alternative(checksum),
+            wouldKeep = dupsByName.kept,
+            keptChecksums = dupsByName.kept.filterNot(_ == checksum) & dupsCkecksums,
+            droppedChecksums = dupsByName.dropped.filterNot(_ == checksum) & dupsCkecksums
+          )
         }
-        val status =
-          if (unsure.size > 0) DuplicateStatus.unsure
-          /* get our configured status */
-          else dupsByName.status(checksum)
-        val dupsCkecksums = dedupInfo.unsure.map(_.info.checksum).toSet
-        val kept = dupsByName.kept.filterNot(_ == checksum) & dupsCkecksums
-        val dropped = dupsByName.dropped.filterNot(_ == checksum) & dupsCkecksums
-        DeduplicationInfo(status, dupsByName.alternative(checksum), false, dupsByName.kept, kept, dropped, unsure)
-      } getOrElse(dedupInfo)
+      } getOrElse(decideByChecksum2(dedupInfo))
 
     def decideByChecksum2(dedupInfo: DeduplicationInfo): DeduplicationInfo =
       if (!dedupInfo.isUnsure || !options.duplicateBootSectorAllow) dedupInfo
       else {
         val unsure =
           dedupInfo.unsure.filterNot(_.info.checksum2 == duplicates.preferred.info.checksum2)
-        val alternativeBootSector = (unsure.length == 0)
-        val alternative =
-          if (alternativeBootSector) {
-            val duplicates2 = sortDuplicates(duplicates.preferred :: dedupInfo.unsure, exclude = false)
-            /* Are we still the preferred disk ? If not we are an alternative */
-            !(duplicates2.preferred eq duplicates.preferred)
-          }
-          else dedupInfo.alternative
 
-        val status =
-          if (unsure.size > 0) DuplicateStatus.unsure
-          else DuplicateStatus.keep
-        dedupInfo.copy(
-          status = status,
-          alternative = alternative,
-          alternativeBootSector = alternativeBootSector,
-          unsure = unsure
-        )
+        if (unsure.size > 0) {
+          dedupInfo.copy(
+            status = DuplicateStatus.unsure,
+            unsure = unsure
+          )
+        }
+        else {
+          /* We need to sort ourself against previously unsure disks to know
+           * whether we are the preferred one (to keep) or not.
+           */
+          val duplicates2 =
+            sortDuplicates(duplicates.preferred :: dedupInfo.unsure, exclude = false)
+          /* Group alternatives by actual boot sector checksum */
+          val bootsectors = duplicates2.disks.groupBy(_.info.bootSector.checksum)
+          /* We are an alternative boot sector (preferred or not) if there
+           * actually are more than one different boot sector. */
+          val alternativeBootSector = (bootsectors.size > 1)
+          /* See if this boot sector is the preferred one or an alternative one */
+          val alternative = !(duplicates2.preferred eq duplicates.preferred)
+          val disks2 = bootsectors(duplicates.preferred.info.bootSector.checksum)
+          if (disks2.head eq duplicates.preferred) {
+            /* We are the preferred disk for this alternative boot sector */
+            dedupInfo.copy(
+              status = DuplicateStatus.keep,
+              alternative = alternative,
+              alternativeBootSector = alternativeBootSector,
+              droppedChecksums = disks2.tail.map(_.info.checksum).toSet,
+              unsure = unsure
+            )
+          }
+          else {
+            /* We are not the preferred disk for this alternative boot sector */
+            dedupInfo.copy(
+              status = DuplicateStatus.drop,
+              alternative = alternative,
+              alternativeBootSector = alternativeBootSector,
+              keptChecksums = Set(disks2.head.info.checksum),
+              unsure = unsure
+            )
+          }
+        }
       }
 
-    decideByChecksum2(decideByChecksum(decideGeneric))
+    decide
   }
 
   def moveDuplicates(duplicates: Duplicates, dedupInfo: DeduplicationInfo) {
-    def folderIsAlternative(path: Path): Boolean = {
-      val name = path.getFileName.toString
-      (name == Settings.core.outputRelativeAlternatives) || (name.startsWith(s"${Settings.core.outputRelativeAlternatives}."))
-    }
-
     def moveDisk(disk: Disk) {
       val output = dedupInfo.status match {
         case DuplicateStatus.drop =>

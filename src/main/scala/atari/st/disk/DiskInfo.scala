@@ -8,7 +8,6 @@ import java.nio.charset.Charset
 import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.zip.{ZipEntry, ZipException, ZipFile}
-import scala.language.postfixOps
 import scala.util.matching.Regex
 import suiryc.scala.io.{FileTimes, IOStream, PathsEx}
 import suiryc.scala.misc.EnumerationEx
@@ -229,27 +228,28 @@ object DiskInfo {
 
   /* Computes checksums (upper-case) of given input. */
   def computeChecksum(stream: InputStream): (String, String) = {
-    val buffer = new Array[Byte](1024 * 16)
     val msgDigest = MessageDigest.getInstance("MD5")
     val msgDigest2 = MessageDigest.getInstance("MD5")
 
-    /* Separately read the boot sector */
-    IOStream.readFully(stream, buffer, 0, DiskFormat.bytesPerSector)
-    msgDigest.update(buffer, 0, DiskFormat.bytesPerSector)
-    /* Then read the rest of the disk */
-    Stream.continually(stream.read(buffer)).takeWhile(_ != -1) foreach { count =>
-      msgDigest.update(buffer, 0, count)
-      msgDigest2.update(buffer, 0, count)
+    def updateChecksums(bootsector: Boolean)(b: Array[Byte], off: Int, len: Int) {
+      msgDigest.update(b, 0, len)
+      if (!bootsector)
+        msgDigest2.update(b, 0, len)
     }
 
+    /* Separately read the boot sector */
+    IOStream.process(stream, updateChecksums(true), len = Some(DiskFormat.bytesPerSector))
+    /* Then read the rest of the disk */
+    IOStream.process(stream, updateChecksums(false))
+
     val checksum =
-      msgDigest.digest().toList map { byte =>
+      msgDigest.digest().toList.map { byte =>
         f"$byte%02X"
-      } mkString
+      }.mkString
     val checksum2 =
-      msgDigest2.digest().toList map { byte =>
+      msgDigest2.digest().toList.map { byte =>
         f"$byte%02X"
-      } mkString
+      }.mkString
 
     (checksum, checksum2)
   }
