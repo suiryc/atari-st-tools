@@ -22,6 +22,7 @@ object DiskTools extends App {
     allowByName: Boolean = false,
     checkBootSector: Boolean = Settings.core.checkBootSector,
     dryRun: Boolean = false,
+    duplicateAllowAlternatives: Boolean = Settings.core.duplicateAllowAlternatives,
     duplicateBootSectorAllow: Boolean = Settings.core.duplicateBootSectorAllow,
     duplicateBootSectorAlternativeImage: Option[String] = Settings.core.duplicateBootSectorAlternativeImage,
     duplicateBootSectorAlternativeSector: Option[String] = Settings.core.duplicateBootSectorAlternativeSector,

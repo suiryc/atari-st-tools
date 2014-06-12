@@ -71,7 +71,7 @@ object Deduplicator {
             val swith = if (!dedupInfo.keptChecksums.isEmpty) s" with[${dedupInfo.keptChecksums}]" else ""
             val sagainst = if (!dedupInfo.droppedChecksums.isEmpty) s" unlike[${dedupInfo.droppedChecksums}]" else ""
             val salternative = if (dedupInfo.alternative) "alternative" else "preferred"
-            if (!dedupInfo.keptChecksums.isEmpty || !dedupInfo.droppedChecksums.isEmpty)
+            if (!dedupInfo.keptChecksums.isEmpty || !dedupInfo.droppedChecksums.isEmpty || dedupInfo.alternative)
               println(s"  Duplicate by name kept (${salternative})${swith}${sagainst}")
             if (dedupInfo.alternativeBootSector) {
               if (!dedupInfo.alternative)
@@ -143,17 +143,21 @@ object Deduplicator {
       else Settings.core.duplicatesByName.get(checksum) map { dupsByName =>
         /* Checksum is known, check for actually unsure duplicates */
         val unsure =
-          dedupInfo.unsure filter { dup =>
-            /* First keep only those not known */
+          dedupInfo.unsure filterNot { dup =>
+            /* First drop those in an 'alternative' folder */
+            if (!options.duplicateAllowAlternatives) false
+            else folderIsAlternative(dup)
+          } filter { dup =>
+            /* Then keep only those not known */
             dupsByName.status(dup.info.checksum) == DuplicateStatus.unsure
-          } filterNot { unsureDisk =>
+          } filterNot { dup =>
             /* Then drop those that actually are duplicates (only serial number
              * differs) of known disks. */
             if (!options.duplicateBootSectorAllow) false
             else (dupsByName.kept ++ dupsByName.dropped) exists { knownChecksum =>
               diskChecksums.get(knownChecksum) map { knownDuplicates =>
-                (knownDuplicates.preferred.info.checksum2 == unsureDisk.info.checksum2) &&
-                (knownDuplicates.preferred.info.bootSector.checksum == unsureDisk.info.bootSector.checksum)
+                (knownDuplicates.preferred.info.checksum2 == dup.info.checksum2) &&
+                (knownDuplicates.preferred.info.bootSector.checksum == dup.info.bootSector.checksum)
               } getOrElse(false)
             }
           }
@@ -167,7 +171,8 @@ object Deduplicator {
             alternative = dupsByName.alternative(checksum),
             wouldKeep = dupsByName.kept,
             keptChecksums = dupsByName.kept.filterNot(_ == checksum) & dupsCkecksums,
-            droppedChecksums = dupsByName.dropped.filterNot(_ == checksum) & dupsCkecksums
+            droppedChecksums = dupsByName.dropped.filterNot(_ == checksum) & dupsCkecksums,
+            unsure = unsure
           )
         }
       } getOrElse(decideByChecksum2(dedupInfo))
@@ -175,8 +180,13 @@ object Deduplicator {
     def decideByChecksum2(dedupInfo: DeduplicationInfo): DeduplicationInfo =
       if (!dedupInfo.isUnsure || !options.duplicateBootSectorAllow) dedupInfo
       else {
-        val unsure =
-          dedupInfo.unsure.filterNot(_.info.checksum2 == duplicates.preferred.info.checksum2)
+        val (sameChecksum, differentChecksum) =
+          dedupInfo.unsure.partition(_.info.checksum2 == duplicates.preferred.info.checksum2)
+        val (unsure, unsureAlternatives) =
+          if (options.duplicateAllowAlternatives)
+            differentChecksum.partition(!folderIsAlternative(_))
+          else
+            (differentChecksum, Nil)
 
         if (unsure.size > 0) {
           dedupInfo.copy(
@@ -189,7 +199,7 @@ object Deduplicator {
            * whether we are the preferred one (to keep) or not.
            */
           val duplicates2 =
-            sortDuplicates(duplicates.preferred :: dedupInfo.unsure, exclude = false)
+            sortDuplicates(duplicates.preferred :: sameChecksum, exclude = false)
           /* Group alternatives by actual boot sector checksum */
           val bootsectors = duplicates2.disks.groupBy(_.info.bootSector.checksum)
           /* We are an alternative boot sector (preferred or not) if there
@@ -221,7 +231,13 @@ object Deduplicator {
         }
       }
 
-    decide
+    val dedupInfo = decide
+    if (dedupInfo.isUnsure && options.duplicateAllowAlternatives && folderIsAlternative(duplicates.preferred)) {
+      dedupInfo.copy(
+        status = DuplicateStatus.keep,
+        alternative = true
+      )
+    } else dedupInfo
   }
 
   def moveDuplicates(duplicates: Duplicates, dedupInfo: DeduplicationInfo) {

@@ -64,6 +64,7 @@ class Settings(
   val outputRelativeConverted = value[String]("output.converted")
   val outputConverted = outputRoot.resolve(outputRelativeConverted)
 
+  val duplicateAllowAlternatives = value[Boolean]("duplicates.allow-alternatives")
   val duplicateBootSectorAllow = value[Boolean]("duplicates.boot-sector.allow")
   val duplicateBootSectorAlternativeImage = option[String]("duplicates.boot-sector.alternative-image")
   val duplicateBootSectorAlternativeSector = option[String]("duplicates.boot-sector.alternative-sector")

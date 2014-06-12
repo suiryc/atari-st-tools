@@ -21,6 +21,10 @@ object Core {
   val options = DiskTools.options
   implicit val charset = options.zipCharset
 
+  /* XXX - use checksum of full disk without disk serial number ?
+   *   to find more possible duplicates with different names
+   *   to more easily handle by-name duplicates cases ?
+   */
   val diskChecksums = mutable.Map[String, Duplicates]()
   /* XXX - do we really need/want to sort duplicates by name, and not just keep the list of disks ? */
   val diskNames = mutable.Map[String, Duplicates]()
@@ -197,6 +201,9 @@ object Core {
     val name = path.getFileName.toString
     (name == Settings.core.outputRelativeAlternatives) || (name.startsWith(s"${Settings.core.outputRelativeAlternatives}."))
   }
+
+  def folderIsAlternative(disk: Disk): Boolean =
+    folderIsAlternative(disk.info.path.getParent)
 
   def checkFormat(info: DiskInfo, force: Boolean = false) {
     info.format match {
