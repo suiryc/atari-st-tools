@@ -26,15 +26,14 @@ object Core {
    *   to more easily handle by-name duplicates cases ?
    */
   val diskChecksums = mutable.Map[String, Duplicates]()
-  /* XXX - do we really need/want to sort duplicates by name, and not just keep the list of disks ? */
-  val diskNames = mutable.Map[String, Duplicates]()
+  val diskNames = mutable.Map[String, List[Disk]]()
 
   val knownNames = """(?i).*\.(?:st|msa|zip)"""
 
   def updateDuplicates(map: mutable.Map[String, Duplicates], key: String, disk: Disk) {
     val duplicates =
       map.get(key) map { duplicates =>
-        sortDuplicates(disk :: duplicates.disks)
+        sortDuplicates(duplicates.disks :+ disk)
       } getOrElse(Duplicates(disk, Nil, Nil))
     map.put(key, duplicates)
   }
@@ -101,7 +100,13 @@ object Core {
     println("Searching duplicates ...")
     disks foreach { disk =>
       updateDuplicates(diskChecksums, disk.info.checksum, disk)
-      updateDuplicates(diskNames, disk.info.normalizedName, disk)
+
+      val diskName = disk.info.normalizedName
+      val duplicatesByName =
+        diskNames.get(diskName) map { duplicates =>
+          duplicates :+ disk
+        } getOrElse(List(disk))
+      diskNames.put(diskName, duplicatesByName)
     }
   }
 
@@ -216,10 +221,10 @@ object Core {
     else Duplicates(duplicates.head, Nil, Nil)
   }
 
-  def folderIsAlternative(path: Path): Boolean = {
+  def folderIsAlternative(path: Path): Boolean = Option(path) map { path =>
     val name = path.getFileName.toString
     (name == Settings.core.outputRelativeAlternatives) || (name.startsWith(s"${Settings.core.outputRelativeAlternatives}."))
-  }
+  } getOrElse(false)
 
   def folderIsAlternative(disk: Disk): Boolean =
     folderIsAlternative(disk.info.path.getParent)

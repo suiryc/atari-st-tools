@@ -154,7 +154,7 @@ object Deduplicator {
           /* Get duplicates by name with different checksums. */
           val unsureChecksums =
             names.flatMap(name =>
-              diskNames(name).disks.map(_.info.checksum)
+              diskNames(name).map(_.info.checksum)
             ) -- checksums
           val unsure =
             unsureChecksums.toList.map(diskChecksums(_).preferred)
@@ -299,7 +299,7 @@ object Deduplicator {
                 alternative = (diskChecksum != duplicatesAll.preferred.info.checksum),
                 original = original,
                 keptChecksums = keptChecksums.filterNot(_ == diskChecksum),
-                unsure = unsure
+                unsure = Nil
               )
             decided(diskChecksum) = diskDedupInfo
           }
@@ -427,7 +427,9 @@ object Deduplicator {
       def getAlternativeTarget(alternativeName: String) =
         if (folderIsAlternative(targetRelative0.getParent))
           /* Keep 'alternative' folder relative to original disk */
-          originalTargetRelative.resolveSibling(targetRelative0.getParent.getParent.relativize(targetRelative0))
+          Option(targetRelative0.getParent.getParent) map { grandparent =>
+            originalTargetRelative.resolveSibling(grandparent.relativize(targetRelative0))
+          } getOrElse(originalTargetRelative.resolveSibling(targetRelative0))
         else
           /* Create 'alternative' boot sector folder relatively to original disk */
           originalTargetRelative.resolveSibling(alternativeName).resolve(targetRelative0.getFileName)
