@@ -12,18 +12,16 @@ object DuplicateStatus extends Enumeration {
 }
 
 class ByNameDuplicates(
-  preferred: String,
-  keep: Set[String],
-  drop: Set[String]
+  val preferred: String,
+  val kept: Set[String],
+  val dropped: Set[String]
 ) {
 
-  def kept = keep
-
-  def dropped = drop
+  val known = kept ++ dropped
 
   def status(checksum: String): DuplicateStatus.Value =
-    if (keep.contains(checksum)) DuplicateStatus.keep
-    else if (drop.contains(checksum)) DuplicateStatus.drop
+    if (kept.contains(checksum)) DuplicateStatus.keep
+    else if (dropped.contains(checksum)) DuplicateStatus.drop
     else DuplicateStatus.unsure
 
   def alternative(checksum: String): Boolean =

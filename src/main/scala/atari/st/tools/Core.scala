@@ -145,8 +145,24 @@ object Core {
       if (!folderIsAlternative(info.path)) 1
       else 0
 
-    def pointsFormat(info: DiskInfo) =
+    def pointsType(info: DiskInfo) =
       info.kind.id
+
+    def pointsFormat(info: DiskInfo) =
+      info.format match {
+        case format: StandardDiskFormat =>
+          val bootSector = info.bootSector
+          if ((bootSector.sectorsPerTrack != format.sectorsPerTrack) ||
+            (bootSector.tracks != format.tracks) ||
+            (bootSector.sides != format.sides))
+          {
+            pointsRef / 2
+          }
+          else pointsRef
+
+        case format: UnknownDiskFormat =>
+          0
+      }
 
     def points(info: DiskInfo) =
       pointsNameDepth(info) + pointsName(info) + pointsPath(info) +
@@ -177,20 +193,21 @@ object Core {
       val (chosens, excluded) =
         if (!exclude) (duplicates, Nil)
         else {
-          /* sort by preferred format, drop less rich disk types if any */
-          val kind = sort(duplicates, pointsFormat).head.info.kind
+          /* sort by preferred type, drop less rich disk types if any */
+          val kind = sort(duplicates, pointsType).head.info.kind
           duplicates.partition(_.info.kind == kind)
         }
 
       /* Sort and discriminate in the following order:
        *   - known checksum: only matters when comparing different checksums
+       *   - disk format (unknown/standard, and compared to boot sector)
        *   - given points: general sorting
        *   - the longest filename: supposed to be more informational
        *   - not in an 'alternative' folder
-       *   - richest format
+       *   - richest image type
        */
-      val sorted = sort(chosens, pointsKnownDuplicate, points,
-        pointsFileNameLength, pointsAlternative, pointsFormat)
+      val sorted = sort(chosens, pointsKnownDuplicate, pointsFormat, points,
+        pointsFileNameLength, pointsAlternative, pointsType)
 
       Duplicates(sorted.head, sorted.tail, excluded)
     }
