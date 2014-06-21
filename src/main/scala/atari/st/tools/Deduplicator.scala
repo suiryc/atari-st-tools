@@ -20,6 +20,8 @@ object Deduplicator {
     alternative: Boolean = false,
     /** Whether this is an alternative boot sector */
     alternativeBootSector: Boolean = false,
+    /** Original disk, if known */
+    original: Option[Disk] = None,
     /** By-name duplicates checksums that would be kept if present */
     wouldKeep: Set[String] = Set.empty,
     /** By-name duplicates that are actually kept */
@@ -89,6 +91,11 @@ object Deduplicator {
             val swith = if (!dedupInfo.keptChecksums.isEmpty) s" with[${dedupInfo.keptChecksums}]" else ""
             val sagainst = if (!dedupInfo.droppedChecksums.isEmpty) s" unlike[${dedupInfo.droppedChecksums}]" else ""
             val salternative = if (dedupInfo.alternative) "alternative" else "preferred"
+            if (dedupInfo.alternative || dedupInfo.alternativeBootSector)
+              dedupInfo.original foreach { disk =>
+                if (!(disk eq preferred))
+                  println(s"  Original: ${disk.info}")
+              }
             if (!dedupInfo.keptChecksums.isEmpty || !dedupInfo.droppedChecksums.isEmpty || dedupInfo.alternative)
               println(s"  Duplicate by name kept (${salternative})${swith}${sagainst}")
             if (dedupInfo.alternativeBootSector) {
@@ -206,6 +213,7 @@ object Deduplicator {
             val checksums = disks.map(_.info.checksum).toSet
             val keptChecksums = dupsByName.kept ++ unsureAlternatives.map(_.info.checksum)
             val droppedChecksums = dupsByName.dropped
+            val original = diskChecksums.get(dupsByName.preferred) map(_.preferred)
 
             /* We got 3 list of disks:
              *  1. Known checksums: decided by configuration
@@ -216,6 +224,7 @@ object Deduplicator {
                 dedupInfo.copy(
                   status = dupsByName.status(diskChecksum),
                   alternative = dupsByName.alternative(diskChecksum),
+                  original = original,
                   wouldKeep = dupsByName.kept,
                   keptChecksums = keptChecksums.filterNot(_ == diskChecksum) & checksums,
                   droppedChecksums = droppedChecksums.filterNot(_ == diskChecksum) & checksums,
@@ -249,6 +258,7 @@ object Deduplicator {
                 dedupInfo.copy(
                   status = DuplicateStatus.keep,
                   alternative = true,
+                  original = original,
                   keptChecksums = keptChecksums.filterNot(_ == diskChecksum) & checksums,
                   unsure = unsure
                 )
@@ -279,6 +289,7 @@ object Deduplicator {
            * disk. */
           val duplicatesAll = sortDuplicates(disks, exclude = false)
           val keptChecksums = disks.map(_.info.checksum).toSet
+          val original = Some(duplicatesAll.preferred)
 
           disks foreach { disk =>
             val diskChecksum = disk.info.checksum
@@ -286,6 +297,7 @@ object Deduplicator {
               dedupInfo.copy(
                 status = DuplicateStatus.keep,
                 alternative = (diskChecksum != duplicatesAll.preferred.info.checksum),
+                original = original,
                 keptChecksums = keptChecksums.filterNot(_ == diskChecksum),
                 unsure = unsure
               )
@@ -314,6 +326,7 @@ object Deduplicator {
         val bootsectors = duplicatesSame.disks.groupBy(_.info.bootSector.checksum)
         val keptChecksums = bootsectors.map(_._2.head.info.checksum).toSet ++ unsureAlternatives.map(_.info.checksum)
         val droppedChecksums = bootsectors.flatMap(_._2.tail).map(_.info.checksum).toSet
+        val original = Some(duplicatesAll.preferred)
 
         if (!(duplicatesSame.preferred eq duplicatesAll.preferred)) {
           /* Special case: if one of the 'alternative' images is preferred,
@@ -326,6 +339,7 @@ object Deduplicator {
               dedupInfo.copy(
                 status = if (keptChecksums.contains(diskChecksum)) DuplicateStatus.keep else DuplicateStatus.drop,
                 alternative = (diskChecksum != duplicatesAll.preferred.info.checksum),
+                original = original,
                 keptChecksums = keptChecksums.filterNot(_ == diskChecksum),
                 droppedChecksums = droppedChecksums.filterNot(_ == diskChecksum),
                 unsure = unsure
@@ -350,6 +364,7 @@ object Deduplicator {
                 status = if (keptChecksums.contains(diskChecksum)) DuplicateStatus.keep else DuplicateStatus.drop,
                 alternative = (diskChecksum != duplicatesSame.preferred.info.checksum),
                 alternativeBootSector = alternativeBootSector,
+                original = original,
                 keptChecksums = keptChecksums.filterNot(_ == diskChecksum),
                 droppedChecksums = droppedChecksums.filterNot(_ == diskChecksum),
                 unsure = unsure
@@ -367,6 +382,7 @@ object Deduplicator {
                 status = DuplicateStatus.keep,
                 alternative = true,
                 alternativeBootSector = false,
+                original = original,
                 keptChecksums = keptChecksums.filterNot(_ == diskChecksum),
                 droppedChecksums = droppedChecksums.filterNot(_ == diskChecksum),
                 unsure = unsure
@@ -390,31 +406,41 @@ object Deduplicator {
           options.outputOthers
 
         case DuplicateStatus.keep =>
-          if (disk eq duplicates.preferred) options.outputPreferred
+          val canKeep =
+            !dedupInfo.alternative ||
+            !dedupInfo.alternativeBootSector ||
+            options.duplicateBootSectorAlternativeImage.isDefined
+          if ((disk eq duplicates.preferred) && canKeep) options.outputPreferred
           else options.outputOthers
       }
 
-      def getAlternativesTarget(path: Path) =
-        if (folderIsAlternative(path.getParent)) path
-        else path.getParent.resolve(Settings.core.outputRelativeAlternatives).resolve(path.getFileName)
-
       def getNominalTarget(path: Path) =
         if (!folderIsAlternative(path.getParent)) path
-        else path.getParent.getParent.resolve(path.getFileName)
+        else path.getParent.resolveSibling(path.getFileName)
 
-      val target0 = output.resolve(disk.root.relativize(disk.info.path))
-      val target1 =
+      val targetRelative0 = disk.root.relativize(disk.info.path)
+      val originalDisk = dedupInfo.original getOrElse(disk)
+      /* We may need to move this disk relatively to the original disk */
+      val originalTargetRelative =
+        getNominalTarget(originalDisk.root.relativize(originalDisk.info.path))
+
+      def getAlternativeTarget(alternativeName: String) =
+        if (folderIsAlternative(targetRelative0.getParent))
+          /* Keep 'alternative' folder relative to original disk */
+          originalTargetRelative.resolveSibling(targetRelative0.getParent.getParent.relativize(targetRelative0))
+        else
+          /* Create 'alternative' boot sector folder relatively to original disk */
+          originalTargetRelative.resolveSibling(alternativeName).resolve(targetRelative0.getFileName)
+
+      val targetRelative =
         if (dedupInfo.alternative) {
-          if (dedupInfo.alternativeBootSector) {
-            options.duplicateBootSectorAlternativeImage map { suffix =>
-              if (folderIsAlternative(target0.getParent)) target0
-              else target0.getParent.resolve(s"${Settings.core.outputRelativeAlternatives}.${suffix}").resolve(target0.getFileName)
-            } getOrElse(getAlternativesTarget(options.outputOthers.resolve(disk.root.relativize(disk.info.path))))
-          }
-          else getAlternativesTarget(target0)
+          if (dedupInfo.alternativeBootSector && options.duplicateBootSectorAlternativeImage.isDefined)
+            getAlternativeTarget(s"${Settings.core.outputRelativeAlternatives}.${options.duplicateBootSectorAlternativeImage.get}")
+          else
+            getAlternativeTarget(Settings.core.outputRelativeAlternatives)
         }
-        else getNominalTarget(target0)
-      val target = Util.findTarget(target1)
+        else getNominalTarget(targetRelative0)
+      val target = Util.findTarget(output.resolve(targetRelative))
 
       if (!options.dryRun) {
         target.getParent.toFile.mkdirs()
@@ -425,8 +451,8 @@ object Deduplicator {
 
       if (dedupInfo.alternativeBootSector && dedupInfo.alternative)
         options.duplicateBootSectorAlternativeSector foreach { suffix =>
-          val bsName = s"${PathsEx.atomicName(disk.info.path)}.${suffix}"
-          val target = output.resolve(disk.root.relativize(disk.info.path.resolveSibling(bsName)))
+          val bsName = s"${PathsEx.atomicName(originalDisk.info.path)}.${suffix}"
+          val target = output.resolve(originalDisk.root.relativize(originalDisk.info.path.resolveSibling(bsName)))
 
           if (!options.dryRun) {
             target.getParent.toFile.mkdirs()
