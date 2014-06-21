@@ -77,6 +77,8 @@ object Core {
         DiskInfo(path, options.zipAllowDiskName, options.zipAllowExtra).fold ({ ex =>
           ex match {
             case _: NoDiskInZipException =>
+              if (options.verbose > 0)
+                println(s"Archive file[$path] does not contain disk images")
 
             case ex =>
               println(s"Error with file[$path]: ${ex.getMessage()}")
