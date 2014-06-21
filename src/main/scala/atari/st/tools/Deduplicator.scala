@@ -394,9 +394,13 @@ object Deduplicator {
           else options.outputOthers
       }
 
-      def getAlternativesFolder(path: Path) =
+      def getAlternativesTarget(path: Path) =
         if (folderIsAlternative(path.getParent)) path
         else path.getParent.resolve(Settings.core.outputRelativeAlternatives).resolve(path.getFileName)
+
+      def getNominalTarget(path: Path) =
+        if (!folderIsAlternative(path.getParent)) path
+        else path.getParent.getParent.resolve(path.getFileName)
 
       val target0 = output.resolve(disk.root.relativize(disk.info.path))
       val target1 =
@@ -405,11 +409,11 @@ object Deduplicator {
             options.duplicateBootSectorAlternativeImage map { suffix =>
               if (folderIsAlternative(target0.getParent)) target0
               else target0.getParent.resolve(s"${Settings.core.outputRelativeAlternatives}.${suffix}").resolve(target0.getFileName)
-            } getOrElse(getAlternativesFolder(options.outputOthers.resolve(disk.root.relativize(disk.info.path))))
+            } getOrElse(getAlternativesTarget(options.outputOthers.resolve(disk.root.relativize(disk.info.path))))
           }
-          else getAlternativesFolder(target0)
+          else getAlternativesTarget(target0)
         }
-        else target0
+        else getNominalTarget(target0)
       val target = Util.findTarget(target1)
 
       if (!options.dryRun) {
