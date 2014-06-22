@@ -149,7 +149,7 @@ object Core {
       else 0
 
     def pointsAlternative(info: DiskInfo) =
-      if (!folderIsAlternative(info.path)) 1
+      if (!folderIsAlternative(info.path.getParent)) 1
       else 0
 
     def pointsType(info: DiskInfo) =

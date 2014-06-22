@@ -454,7 +454,7 @@ object Deduplicator {
       if (dedupInfo.alternativeBootSector && dedupInfo.alternative)
         options.duplicateBootSectorAlternativeSector foreach { suffix =>
           val bsName = s"${PathsEx.atomicName(originalDisk.info.path)}.${suffix}"
-          val target = output.resolve(originalDisk.root.relativize(originalDisk.info.path.resolveSibling(bsName)))
+          val target = output.resolve(originalTargetRelative.resolveSibling(bsName))
 
           if (!options.dryRun) {
             target.getParent.toFile.mkdirs()
