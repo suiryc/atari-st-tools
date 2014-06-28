@@ -2,25 +2,26 @@ organization := "suiryc"
 
 name := "atari-st-tools"
 
-version := "0.0.1-SNAPSHOT"
+version := "0.0.2-SNAPSHOT"
 
-scalaVersion := "2.10.3"
+scalaVersion := "2.11.1"
 
 scalacOptions ++= Seq("-deprecation", "-feature", "-optimize", "-unchecked", "-Yinline-warnings")
 
 scalacOptions in (Compile, doc) ++= Seq("-diagrams", "-implicits")
 
 val versions = Map[String, String](
+  "java" -> "1.8",
 /* Project dependencies */
   "config" -> "1.2.1",
   "grizzled" -> "1.0.2",
   "logback" -> "1.1.2",
   "scopt" -> "3.2.0",
   "slf4j" -> "1.7.7",
-  "suiryc-scala" -> "0.0.1-SNAPSHOT",
+  "suiryc-scala" -> "0.0.2-SNAPSHOT",
 /* Maven dependencies */
   "maven-compiler-plugin" -> "3.1",
-  "maven-surefire-plugin" -> "2.16",
+  "maven-surefire-plugin" -> "2.17",
   "scala-maven-plugin" -> "3.1.6"
 )
 
@@ -64,7 +65,6 @@ pomExtra := (
             <arg>-optimize</arg>
             <arg>-unchecked</arg>
           </args>
-          <recompileMode>incremental</recompileMode>
         </configuration>
         <executions>
           <execution>
@@ -80,8 +80,8 @@ pomExtra := (
         <artifactId>maven-compiler-plugin</artifactId>
         <version>{ versions("maven-compiler-plugin") }</version>
         <configuration>
-          <source>1.8</source>
-          <target>1.8</target>
+          <source>{ versions("java") }</source>
+          <target>{ versions("java") }</target>
         </configuration>
       </plugin>
       <plugin>
