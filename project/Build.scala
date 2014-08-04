@@ -4,18 +4,22 @@ import Keys._
 
 object ProjectBuild extends Build {
 
+  lazy val base = file(".").getCanonicalFile
+
   lazy val copyPom = TaskKey[Unit]("copy-pom")
 
-  def copyPomTask(base: File) = copyPom <<= makePom map { pom =>
-    IO.copyFile(pom, base / "pom.xml")
+  val copyPomTask = copyPom <<= (makePom, streams) map { (pom, s) =>
+    val dest = base / "pom.xml"
+    s.log.info(s"Copy pom: $dest")
+    IO.copyFile(pom, dest)
   }
 
-  lazy val base = file(".").getCanonicalFile
+  val extCompile = compile <<= (compile in Compile) dependsOn(copyPom)
 
   lazy val root = Project(
     id = "atari-st-tools",
     base = base,
-    settings = Defaults.defaultSettings ++ Seq(copyPomTask(base))
+    settings = Defaults.defaultSettings ++ Seq(copyPomTask, extCompile)
   )
 }
 
