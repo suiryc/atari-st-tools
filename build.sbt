@@ -38,7 +38,7 @@ val localMavenPath = Path.userHome.absolutePath + "/.m2/repository"
 
 resolvers += "Local Maven Repository" at "file://" + localMavenPath
 
-seq(Revolver.settings: _*)
+Seq(Revolver.settings: _*)
 
 
 publishMavenStyle := true

@@ -19,7 +19,7 @@ object ProjectBuild extends Build {
   lazy val root = Project(
     id = "atari-st-tools",
     base = base,
-    settings = Defaults.defaultSettings ++ Seq(copyPomTask, extCompile)
+    settings = Seq(copyPomTask, extCompile)
   )
 }
 
