@@ -43,7 +43,7 @@ case class DiskInfo(
 
   val normalizedName = {
     val formatter =
-      nameFormatter getOrElse(DiskNameFormatter.lowerCase)
+      nameFormatter.getOrElse(DiskNameFormatter.lowerCase)
 
     formatter.normalize(atomicName)
   }
@@ -68,11 +68,11 @@ case class DiskInfo(
       import scala.collection.JavaConversions._
 
       val zip = new ZipFile(path.toFile, zipCharset)
-      val entry = zip.entries().toList.find(_.getName() == name).get
+      val entry = zip.entries().toList.find(_.getName == name).get
       zip.close()
       Zip.unzip(path, { (_entry, input) =>
         /* Continue until we find the entry */
-        val found = (_entry.getName() == entry.getName())
+        val found = _entry.getName == entry.getName
         val value =
           if (found) Some(build(input))
           else None
@@ -81,7 +81,7 @@ case class DiskInfo(
         case Some(disk) => disk
       } getOrElse {
         val ex = new ZipException("ZipFile/ZipInputStream mismatch")
-        ex.initCause(new Exception(s"Missing entry: ${entry.getName()}"))
+        ex.initCause(new Exception(s"Missing entry: ${entry.getName}"))
         throw ex
       }
     }
@@ -134,8 +134,6 @@ object DiskInfo {
     }
 
     if (PathsEx.extension(path).toLowerCase == "zip") {
-      import scala.collection.JavaConversions._
-
       try {
         val zip = new ZipFile(path.toFile, zipCharset)
         val entries = zipEntries(zip, zipAllowDiskName, zipAllowExtra)
@@ -147,23 +145,23 @@ object DiskInfo {
         else if (entries.extraUnknown.length > 0) Left(new Exception("Zip contains unknown extra entries"))
         else {
           val entry = entries.disks.head.entry
-          imageType(PathsEx.extension(entry.getName())) match {
+          imageType(PathsEx.extension(entry.getName)) match {
             case DiskType.Unknown =>
               Left(new Exception("Unknown disk type"))
 
             case t =>
               Zip.unzip(path, { (_entry, input) =>
                 /* Continue until we find the entry */
-                val found = (_entry.getName() == entry.getName())
+                val found = _entry.getName == entry.getName
                 val value =
-                  if (found) Some(build(entry.getName(), t, FileTimes(entry), input, entry.getSize().intValue()))
+                  if (found) Some(build(entry.getName, t, FileTimes(entry), input, entry.getSize.intValue()))
                   else None
                 (value, !found)
               }) collectFirst {
                 case Some(r) => r
               } getOrElse {
                 val ex = new ZipException("ZipFile/ZipInputStream mismatch")
-                ex.initCause(new Exception(s"Missing entry: ${entry.getName()}"))
+                ex.initCause(new Exception(s"Missing entry: ${entry.getName}"))
                 Left(ex)
               }
           }
@@ -194,7 +192,7 @@ object DiskInfo {
     import scala.collection.JavaConversions._
 
     val tuples = zip.entries().toList filterNot(_.isDirectory) sortBy(_.getName.toLowerCase) map { entry =>
-      (entry, imageType(PathsEx.extension(entry.getName())))
+      (entry, imageType(PathsEx.extension(entry.getName)))
     }
     val (knownTuples, otherTuples) = tuples.partition(_._2 != DiskType.Unknown)
     val disks = knownTuples map { tuple =>
@@ -202,11 +200,11 @@ object DiskInfo {
     }
     val diskEntry = knownTuples.headOption.map(_._1)
     val (extraAllowed, extraUnknown) = otherTuples map(_._1) partition { entry =>
-      val entryName = entry.getName()
+      val entryName = entry.getName
       (zipAllowExtra exists { regex =>
         regex.pattern.matcher(PathsEx.filename(entryName)).matches()
       }) || (zipAllowDiskName && diskEntry.exists { diskEntry =>
-        PathsEx.atomicName(entryName).toLowerCase == PathsEx.atomicName(diskEntry.getName().toLowerCase)
+        PathsEx.atomicName(entryName).toLowerCase == PathsEx.atomicName(diskEntry.getName.toLowerCase)
       })
     }
 
@@ -238,9 +236,9 @@ object DiskInfo {
     }
 
     /* Separately read the boot sector */
-    IOStream.process(stream, updateChecksums(true), len = Some(DiskFormat.bytesPerSector))
+    IOStream.process(stream, updateChecksums(bootsector = true), len = Some(DiskFormat.bytesPerSector))
     /* Then read the rest of the disk */
-    IOStream.process(stream, updateChecksums(false))
+    IOStream.process(stream, updateChecksums(bootsector = false))
 
     val checksum =
       msgDigest.digest().toList.map { byte =>

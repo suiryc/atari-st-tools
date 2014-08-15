@@ -31,12 +31,12 @@ case class RegexDiskNameFormatter(
     format.pattern.matcher(name).matches
 
   def normalize(name: String) =
-    format.findFirstMatchIn(name) map { m =>
+    format.findFirstMatchIn(name).map { m =>
       val version = m.group(1).toInt
       val args = version :: ((2 to m.groupCount).toList map { idx =>
         Option(m.group(idx)).getOrElse("")
       })
       normalized.format(args:_*).toLowerCase
-    } getOrElse(name.toLowerCase)
+    }.getOrElse(name.toLowerCase)
 
 }

@@ -13,7 +13,7 @@ object Tester {
           val format = DiskFormat(sectors, tracks, sectorsPerTrack, sides)
           val guessed = DiskFormat(format.size)
           if (format == guessed)
-            println(s"${format.size / 1024}kiB: ${guessed}")
+            println(s"${format.size / 1024}kiB: $guessed")
           else
             println(s"Wrong guess $guessed, expected format")
         }

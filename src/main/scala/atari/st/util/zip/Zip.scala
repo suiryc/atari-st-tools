@@ -27,20 +27,20 @@ object Zip {
      * "PK00" and then have the expected "PK\003\004".
      * So check if we get a first entry at the start, or retry at offset 4.
      */
-    Stream(0, 4) map { offset =>
+    Stream(0, 4).map { offset =>
       val buffered = new BufferedInputStream(new FileInputStream(path.toFile))
       buffered.skip(offset)
       val input = new ZipInputStream(buffered)
-      val firstEntry = input.getNextEntry()
+      val firstEntry = input.getNextEntry
       (input, firstEntry)
-    } find { tuple =>
+    }.find { tuple =>
       val input = tuple._1
       val firstEntry = tuple._2
-      val found = (firstEntry != null)
+      val found = firstEntry != null
       if (!found)
         input.close()
       found
-    } map { tuple =>
+    }.map { tuple =>
       val input = tuple._1
       val firstEntry = tuple._2
 
@@ -72,11 +72,11 @@ object Zip {
       finally {
         input.close()
       }
-    } getOrElse(Nil)
+    }.getOrElse(Nil)
   }
 
   def zip(path: Path) {
-    val filename = path.getFileName().toString
+    val filename = path.getFileName.toString
     val times = FileTimes(path)
     val target = Util.findTarget(path.resolveSibling(s"${PathsEx.atomicName(filename)}.zip"))
     val input = new BufferedInputStream(new FileInputStream(path.toFile))
@@ -85,7 +85,7 @@ object Zip {
     if (times.creation != null)
       entry.setCreationTime(times.creation)
     if (times.lastModified != null) {
-      entry.setTime(times.lastModified.toMillis())
+      entry.setTime(times.lastModified.toMillis)
       /* Also set the extended timestamp field; standard date/time field:
        *   - cannot have dates older than 1980-01-01
        *   - 'only' have a 2s precision (1s for extended timestamp)

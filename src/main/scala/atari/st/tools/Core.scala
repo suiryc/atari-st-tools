@@ -32,9 +32,9 @@ object Core {
 
   def updateDuplicates(map: mutable.Map[String, Duplicates], key: String, disk: Disk) {
     val duplicates =
-      map.get(key) map { duplicates =>
+      map.get(key).map { duplicates =>
         sortDuplicates(duplicates.disks :+ disk)
-      } getOrElse(Duplicates(disk, Nil, Nil))
+      }.getOrElse(Duplicates(disk, Nil, Nil))
     map.put(key, duplicates)
   }
 
@@ -42,7 +42,7 @@ object Core {
     options.sources map { source =>
       val (root, files) =
         if (Files.isDirectory(source)) {
-          println(s"Searching for files in ${source} ...")
+          println(s"Searching for files in $source ...")
           val finder = PathFinder(source) ** knownNames.r
           val files = finder.get().toList map(_.toPath) sortBy(_.toString.toLowerCase)
           (source, files)
@@ -54,22 +54,22 @@ object Core {
           (source.getParent, files)
         }
         else {
-          println(s"Path ${source} does not exist.")
+          println(s"Path $source does not exist.")
           (source, Nil)
         }
       if (files.isEmpty && Files.exists(source))
-        println(s"Path ${source} does not contain known files")
+        println(s"Path $source does not contain known files")
       process(source, root, files)
     }
 
   def findDisks(): List[Disk] = {
     def findDisks(source: Path, root: Path, files: List[Path]): List[Disk] = {
-      if (!files.isEmpty) {
+      if (files.nonEmpty) {
         if (Files.isDirectory(source)) {
-          println(s"Loading files info in ${source} ...")
+          println(s"Loading files info in $source ...")
         }
         else if (Files.exists(source)) {
-          println(s"Loading file ${source} info ...")
+          println(s"Loading file $source info ...")
         }
       }
       files sortBy(_.toString.toLowerCase) map { path =>
@@ -79,8 +79,8 @@ object Core {
               if (options.verbose > 0)
                 println(s"Archive file[$path] does not contain disk images")
 
-            case ex =>
-              println(s"Error with file[$path]: ${ex.getMessage()}")
+            case _ =>
+              println(s"Error with file[$path]: ${ex.getMessage}")
               ex.printStackTrace()
           }
           None
@@ -103,9 +103,9 @@ object Core {
 
       val diskName = disk.info.normalizedName
       val duplicatesByName =
-        diskNames.get(diskName) map { duplicates =>
+        diskNames.get(diskName).map { duplicates =>
           duplicates :+ disk
-        } getOrElse(List(disk))
+        }.getOrElse(List(disk))
       diskNames.put(diskName, duplicatesByName)
     }
   }
@@ -120,18 +120,18 @@ object Core {
       val shortName = PathsEx.atomicName(info.name)
 
       /* we prefer exact match */
-      if (info.path.getFileName().toString.startsWith(s"${shortName}.")) pointsRef
+      if (info.path.getFileName.toString.startsWith(s"$shortName.")) pointsRef
       /* then case insensitive match */
-      else if (info.path.getFileName().toString.toLowerCase.startsWith(s"${shortName.toLowerCase}.")) pointsRef / 2
+      else if (info.path.getFileName.toString.toLowerCase.startsWith(s"${shortName.toLowerCase}.")) pointsRef / 2
       else 0
     }
 
     def pointsFileNameLength(info: DiskInfo) =
-      info.path.getFileName().toString().length()
+      info.path.getFileName.toString.length()
 
     def pointsPath(info: DiskInfo) =
       pointsRef - 1 -
-      options.sources.map(info.path.startsWith(_)).zipWithIndex.find(_._1).map(_._2).getOrElse(pointsRef - 1)
+      options.sources.map(info.path.startsWith).zipWithIndex.find(_._1).map(_._2).getOrElse(pointsRef - 1)
 
     def pointsFormatter(info: DiskInfo) =
       if (info.nameFormatter.isDefined) pointsRef
@@ -221,10 +221,10 @@ object Core {
     else Duplicates(duplicates.head, Nil, Nil)
   }
 
-  def folderIsAlternative(path: Path): Boolean = Option(path) map { path =>
+  def folderIsAlternative(path: Path): Boolean = Option(path).exists { path =>
     val name = path.getFileName.toString
-    (name == Settings.core.outputRelativeAlternatives) || (name.startsWith(s"${Settings.core.outputRelativeAlternatives}."))
-  } getOrElse(false)
+    (name == Settings.core.outputRelativeAlternatives) || name.startsWith(s"${Settings.core.outputRelativeAlternatives}.")
+  }
 
   def folderIsAlternative(disk: Disk): Boolean =
     folderIsAlternative(disk.info.path.getParent)
@@ -233,7 +233,7 @@ object Core {
     info.format match {
       case format: UnknownDiskFormat =>
         if (options.warnUnknownFormat || options.checkBootSector || force)
-          println(s"WARNING! Disk[${info.normalizedName}] image[${info.path}] has unknown format: ${format}")
+          println(s"WARNING! Disk[${info.normalizedName}] image[${info.path}] has unknown format: $format")
 
       case format: StandardDiskFormat =>
         val bootSector = info.bootSector
@@ -242,7 +242,7 @@ object Core {
             (bootSector.tracks != format.tracks) ||
             (bootSector.sides != format.sides))
           {
-            println(s"WARNING! Disk[${info.normalizedName}] image[${info.path}] ${bootSector} does not match ${format}")
+            println(s"WARNING! Disk[${info.normalizedName}] image[${info.path}] $bootSector does not match $format")
           }
         }
     }

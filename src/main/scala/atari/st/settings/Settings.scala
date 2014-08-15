@@ -3,6 +3,7 @@ package atari.st.settings
 import atari.st.disk.{ByNameDuplicates, RegexDiskNameFormatter}
 import com.typesafe.config.{Config, ConfigFactory}
 import java.nio.charset.Charset
+import java.util
 import scala.collection.JavaConversions._
 import suiryc.scala.io.PathsEx
 import suiryc.scala.settings.BaseConfig
@@ -69,9 +70,7 @@ class Settings(
   val duplicateBootSectorAlternativeImage = option[String]("duplicates.boot-sector.alternative-image")
   val duplicateBootSectorAlternativeSector = option[String]("duplicates.boot-sector.alternative-sector")
   val duplicatesByName = config.getAnyRefList("duplicates.by-name").toList map { el =>
-    import java.util.ArrayList
-
-    val dups = el.asInstanceOf[ArrayList[ArrayList[String]]]
+    val dups = el.asInstanceOf[util.ArrayList[util.ArrayList[String]]]
     val keep = dups.get(0).map(_.toUpperCase)
     val drop = dups.get(1).map(_.toUpperCase).toSet
     val byNameDups = new ByNameDuplicates(keep.headOption.getOrElse(""), keep.toSet, drop)

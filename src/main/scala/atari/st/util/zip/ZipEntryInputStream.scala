@@ -14,7 +14,7 @@ extends InputStream
     if (eof) ifEOF
     else {
       val r = f
-      eof = (available() == 0)
+      eof = available() == 0
       r
     }
 

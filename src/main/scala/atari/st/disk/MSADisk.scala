@@ -73,13 +73,13 @@ class MSAInputDisk(input: InputStream) {
 
           val actual = loop(0)
           if (actual != trackSize)
-            throw new InvalidFormatException(s"Invalid track size: ${actual} expected ${trackSize}")
+            throw new InvalidFormatException(s"Invalid track size: $actual expected $trackSize")
         }
         else {
           /* compressed */
           @inline def uncompressedByte(offset: Int, b: Byte) {
             if (offset >= trackSize)
-              throw new InvalidFormatException(s"Invalid compressed track size: can uncompress more than expected ${trackSize}")
+              throw new InvalidFormatException(s"Invalid compressed track size: can uncompress more than expected $trackSize")
             array(offset) = b
           }
 
@@ -105,7 +105,7 @@ class MSAInputDisk(input: InputStream) {
 
           val actual = loop(0, compressedTrackSize)
           if (actual != trackSize)
-            throw new InvalidFormatException(s"Invalid compressed track size: uncompressed ${actual} expected ${trackSize}")
+            throw new InvalidFormatException(s"Invalid compressed track size: uncompressed $actual expected $trackSize")
         }
 
         currentTrackSide += 1

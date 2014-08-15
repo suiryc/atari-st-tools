@@ -51,11 +51,11 @@ object DiskFormat {
 
       /* From possible candidates, first check if one has a sensible number of
        * tracks, otherwise get the first available format, else unknown. */
-      candidates collectFirst {
+      candidates.collectFirst {
         case Some(format) if (probeTracks.contains(format.tracks)) => format
-      } orElse(candidates collectFirst {
+      }.orElse(candidates.collectFirst {
         case Some(format) => format
-      }) getOrElse(new UnknownDiskFormat(size))
+      }).getOrElse(new UnknownDiskFormat(size))
     }
   }
 

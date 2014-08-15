@@ -5,14 +5,12 @@ import atari.st.settings.Settings
 import atari.st.util.Util
 import atari.st.util.zip.Zip
 import java.io.{
-  BufferedInputStream,
   BufferedOutputStream,
   ByteArrayOutputStream,
-  FileInputStream,
   FileOutputStream
 }
 import java.nio.file.{Files, Path}
-import java.util.zip.{ZipEntry, ZipException, ZipFile, ZipOutputStream}
+import java.util.zip.{ZipEntry, ZipException, ZipFile}
 import suiryc.scala.io.{FilesEx, FileTimes, IOStream, PathsEx}
 
 
@@ -22,15 +20,15 @@ object Normalizer {
 
   def normalize() {
     def normalize(source: Path, root: Path, files: List[Path]) {
-      if (!files.isEmpty) {
+      if (files.nonEmpty) {
         if (Files.isDirectory(source)) {
-          println(s"Processing files in ${source} ...")
+          println(s"Processing files in $source ...")
         }
         else if (Files.exists(source)) {
-          println(s"Processing file ${source} ...")
+          println(s"Processing file $source ...")
         }
       }
-      files sortBy(_.toString.toLowerCase) foreach(process)
+      files.sortBy(_.toString.toLowerCase).foreach(process)
     }
 
     findFiles(normalize)
@@ -69,12 +67,12 @@ object Normalizer {
       if ((entries.disks.length > 0) && (entries.extraUnknown.length == 0)) {
         val normalizedDisks = entries.disks map { info =>
           val entry = info.entry
-          val normalized = normalizeFilename(entry.getName())
+          val normalized = normalizeFilename(entry.getName)
           (entry, normalized)
         }
         val diskName = PathsEx.atomicName(normalizedDisks.head._2)
         val normalizedExtra = entries.extraAllowed map { entry =>
-          val normalized = s"${diskName}-${PathsEx.filename(entry.getName()).toLowerCase}"
+          val normalized = s"$diskName-${PathsEx.filename(entry.getName).toLowerCase}"
           (entry, normalized)
         }
         val normalizedEntries = normalizedDisks ::: normalizedExtra
@@ -82,7 +80,7 @@ object Normalizer {
           tuple._1.getName != tuple._2
         }
         val currentFilename = path.getFileName.toString
-        val normalizedZipName = s"${diskName}.zip"
+        val normalizedZipName = s"$diskName.zip"
 
         if (needUnzip) {
           unzipPath(path, zip, normalizedEntries)
@@ -91,10 +89,10 @@ object Normalizer {
           /* Note: take into account names collisions */
           val target = path.resolveSibling(normalizedZipName)
           val collision =
-            if (currentFilename.startsWith(s"${diskName}-") && currentFilename.endsWith(".zip")) {
+            if (currentFilename.startsWith(s"$diskName-") && currentFilename.endsWith(".zip")) {
               try {
                 val idx = currentFilename.substring(diskName.length + 1, currentFilename.length - 4).toInt
-                val collisions = target :: (1 until idx).map(idx => path.resolveSibling(s"${diskName}-${idx}.zip")).toList
+                val collisions = target :: (1 until idx).map(idx => path.resolveSibling(s"$diskName-$idx.zip")).toList
                 collisions.forall(Files.exists(_))
               }
               catch {
@@ -112,12 +110,12 @@ object Normalizer {
           }
           /* else: name is actually valid due to collisions */
           else if (options.verbose > 0) {
-            println(s"Archive[${path}] is OK")
+            println(s"Archive[$path] is OK")
           }
         }
         /* else: all ok */
         else if (options.verbose > 0) {
-          println(s"Archive[${path}] is OK")
+          println(s"Archive[$path] is OK")
         }
       }
       else if (entries.disks.length > 0) {
@@ -131,7 +129,7 @@ object Normalizer {
     }
     catch {
       case ex: Throwable =>
-        println(s"Error with file[$path]: ${ex.getMessage()}")
+        println(s"Error with file[$path]: ${ex.getMessage}")
         ex.printStackTrace()
     }
   }
@@ -140,7 +138,7 @@ object Normalizer {
     var seen = List[ZipEntry]()
     var created = List[Path]()
     try Zip.unzip(path, { (_entry, input) =>
-      entries.find(_._1.getName() == _entry.getName()) foreach { tuple =>
+      entries.find(_._1.getName == _entry.getName) foreach { tuple =>
         val entry = tuple._1
         seen :+= entry
         val normalized = tuple._2
@@ -167,21 +165,21 @@ object Normalizer {
         }
         catch {
           case ex: Throwable =>
-            println(s"Archive[$path] entry[${entry.getName()}] error: ${ex.getMessage}")
+            println(s"Archive[$path] entry[${entry.getName}] error: ${ex.getMessage}")
             throw ex
         }
 
-        println(s"Archive[$path] entry[${entry.getName()}] extracted[${normalizedPath.getFileName}] size[${size}]")
+        println(s"Archive[$path] entry[${entry.getName}] extracted[${normalizedPath.getFileName}] size[$size]")
       }
       (Unit, true)
     }) catch {
       case ex: Throwable =>
-        println(s"Archive[${path}] entries not processed: ${entries}")
+        println(s"Archive[$path] entries not processed: $entries")
         created foreach { path =>
           if (!options.dryRun)
             path.toFile.delete()
           if (options.verbose > 0)
-            println(s"Delete extracted path[${path}]")
+            println(s"Delete extracted path[$path]")
         }
         throw ex
     }
@@ -191,16 +189,16 @@ object Normalizer {
       val ex = new ZipException("ZipFile/ZipInputStream mismatch")
       val notSeen =
         entries map(_._1) filterNot { entry =>
-          seen.exists(_.getName() == entry.getName())
+          seen.exists(_.getName == entry.getName)
         }
-      println(s"Archive[${path}] entries not processed: ${notSeen}")
+      println(s"Archive[$path] entries not processed: $notSeen")
       throw ex
     }
 
     if (!options.dryRun)
       path.toFile.delete()
     if (options.verbose > 0)
-      println(s"Archive[${path}] deleted")
+      println(s"Archive[$path] deleted")
 
     if (options.zip) {
       created foreach { path =>
@@ -222,15 +220,15 @@ object Normalizer {
     val extension = PathsEx.extension(name).toLowerCase
     val formatter = nameFormatter(diskName)
 
-    val normalized = s"${formatter.normalize(diskName)}.${extension}"
+    val normalized = s"${formatter.normalize(diskName)}.$extension"
     if ((options.verbose > 0) && (normalized != name))
-      println(s"Filename[${name}] normalized[${normalized}] by formatter[${formatter.label}]")
+      println(s"Filename[$name] normalized[$normalized] by formatter[${formatter.label}]")
     normalized
   }
 
   def nameFormatter(name: String) =
-    Settings.core.diskNameFormatters find { formatter =>
+    Settings.core.diskNameFormatters.find { formatter =>
       formatter.matches(name)
-    } getOrElse(DiskNameFormatter.lowerCase)
+    }.getOrElse(DiskNameFormatter.lowerCase)
 
 }

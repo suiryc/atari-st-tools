@@ -1,6 +1,6 @@
 package atari.st.tools
 
-import atari.st.disk.{Disk, DiskType, MSAOutputDisk, StandardDiskFormat}
+import atari.st.disk.{DiskType, MSAOutputDisk, StandardDiskFormat}
 import atari.st.disk.exceptions.InvalidFormatException
 import atari.st.util.Util
 import atari.st.util.zip.Zip
@@ -8,11 +8,8 @@ import java.io.{
   BufferedOutputStream,
   ByteArrayOutputStream,
   FileOutputStream,
-  InputStream,
   OutputStream
 }
-import java.nio.charset.Charset
-import java.nio.file.Path
 import suiryc.scala.io.{FilesEx, IOStream}
 
 
@@ -57,17 +54,17 @@ object Converter {
                 output.close()
 
               case _ =>
-                throw new InvalidFormatException(s"Cannot convert unknown disk format[${disk.info.format}] to ${outputType}")
+                throw new InvalidFormatException(s"Cannot convert unknown disk format[${disk.info.format}] to $outputType")
             }
         }
 
-        println(s"Converted ${disk.info} to ${targetPath}")
+        println(s"Converted ${disk.info} to $targetPath")
 
         if (!options.dryRun)
           FilesEx.setTimes(targetPath, disk.info.times)
 
         if (options.zip) {
-          println(s"Zip disk image[${targetPath}]")
+          println(s"Zip disk image[$targetPath]")
           if (!options.dryRun)
             Zip.zip(targetPath)
         }
@@ -75,11 +72,11 @@ object Converter {
       catch {
         case ex: InvalidFormatException =>
           /* Nothing done */
-          println(s"Cannot convert disk[${disk.info.normalizedName}] image[${disk.info.path}]: ${ex.getMessage()}")
+          println(s"Cannot convert disk[${disk.info.normalizedName}] image[${disk.info.path}]: ${ex.getMessage}")
           ex.printStackTrace()
 
         case ex: Throwable =>
-          println(s"Cannot convert disk[${disk.info.normalizedName}] image[${disk.info.path}]: ${ex.getMessage()}")
+          println(s"Cannot convert disk[${disk.info.normalizedName}] image[${disk.info.path}]: ${ex.getMessage}")
           ex.printStackTrace()
           /* Delete created file */
           if (!options.dryRun)
