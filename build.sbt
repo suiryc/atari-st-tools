@@ -34,16 +34,14 @@ libraryDependencies ++= Seq(
   "suiryc" %% "suiryc-scala-core" % versions("suiryc-scala")
 )
 
-val localMavenPath = Path.userHome.absolutePath + "/.m2/repository"
-
-resolvers += "Local Maven Repository" at "file://" + localMavenPath
+resolvers += Resolver.mavenLocal
 
 Seq(Revolver.settings: _*)
 
 
 publishMavenStyle := true
 
-publishTo := Some(Resolver.file("file", new File(localMavenPath)))
+publishTo := Some(Resolver.mavenLocal)
 
 pomExtra := (
   <properties>
