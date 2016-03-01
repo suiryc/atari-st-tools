@@ -9,11 +9,11 @@ import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.zip.{ZipEntry, ZipException, ZipFile}
 import scala.util.matching.Regex
+import suiryc.scala.RichEnumeration
 import suiryc.scala.io.{FileTimes, IOStream, PathsEx}
-import suiryc.scala.misc.EnumerationEx
 
 
-object DiskType extends EnumerationEx {
+object DiskType extends Enumeration {
   val ST = Value
   val MSA = Value
   val Unknown = Value
@@ -140,9 +140,9 @@ object DiskInfo {
         zip.close()
 
         if (entries.count == 0) Left(new Exception("Zip contains nothing"))
-        else if (entries.disks.length == 0) Left(new NoDiskInZipException())
+        else if (entries.disks.isEmpty) Left(new NoDiskInZipException())
         else if (entries.disks.length > 1) Left(new Exception("Zip contains more than one disk"))
-        else if (entries.extraUnknown.length > 0) Left(new Exception("Zip contains unknown extra entries"))
+        else if (entries.extraUnknown.nonEmpty) Left(new Exception("Zip contains unknown extra entries"))
         else {
           val entry = entries.disks.head.entry
           imageType(PathsEx.extension(entry.getName)) match {
@@ -218,7 +218,7 @@ object DiskInfo {
 
   def imageType(extension: String): DiskType.Value =
     try {
-      DiskType(extension)
+      DiskType.byName(extension)
     }
     catch {
       case _: Throwable => DiskType.Unknown

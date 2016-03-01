@@ -6,6 +6,7 @@ import atari.st.tools.{Converter, Deduplicator, Normalizer, Tester}
 import java.nio.charset.{Charset, StandardCharsets}
 import java.nio.file.{Path, Paths}
 import scala.util.matching.Regex
+import suiryc.scala.RichEnumeration
 
 
 object DiskTools extends App {
@@ -107,7 +108,7 @@ object DiskTools extends App {
     } children(
       dryRun(),
       opt[String]("to").text("output type") action { (v, c) =>
-        c.copy(outputType = DiskType(v))
+        c.copy(outputType = DiskType.byName(v))
       },
       zip(),
       zipCharset(),
