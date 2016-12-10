@@ -15,7 +15,7 @@ object DiskNameFormatter {
 
   val lowerCase = new DiskNameFormatter("lowercase") {
     override def matches(name: String) = true
-    override def normalize(name: String) = name.toLowerCase
+    override def normalize(name: String): String = name.toLowerCase
   }
 
 }
@@ -27,10 +27,10 @@ case class RegexDiskNameFormatter(
 ) extends DiskNameFormatter(label)
 {
 
-  def matches(name: String) =
+  def matches(name: String): Boolean =
     format.pattern.matcher(name).matches
 
-  def normalize(name: String) =
+  def normalize(name: String): String =
     format.findFirstMatchIn(name).map { m =>
       val version = m.group(1).toInt
       val args = version :: ((2 to m.groupCount).toList map { idx =>

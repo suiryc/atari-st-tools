@@ -35,7 +35,7 @@ object DiskFormat {
     }
 
   def apply(size: Int): DiskFormat = {
-    if (size % bytesPerSector != 0) new UnknownDiskFormat(size)
+    if (size % bytesPerSector != 0) UnknownDiskFormat(size)
     else {
       val sectors = size / bytesPerSector
       /* First find possible sectors per track */
@@ -52,10 +52,10 @@ object DiskFormat {
       /* From possible candidates, first check if one has a sensible number of
        * tracks, otherwise get the first available format, else unknown. */
       candidates.collectFirst {
-        case Some(format) if (probeTracks.contains(format.tracks)) => format
+        case Some(format) if probeTracks.contains(format.tracks) => format
       }.orElse(candidates.collectFirst {
         case Some(format) => format
-      }).getOrElse(new UnknownDiskFormat(size))
+      }).getOrElse(UnknownDiskFormat(size))
     }
   }
 

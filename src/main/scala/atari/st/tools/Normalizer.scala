@@ -32,6 +32,7 @@ object Normalizer {
     }
 
     findFiles(normalize)
+    ()
   }
 
   def process(path: Path) {
@@ -64,7 +65,7 @@ object Normalizer {
       val zip = new ZipFile(path.toFile, options.zipCharset)
 
       val entries = DiskInfo.zipEntries(zip, options.zipAllowDiskName, options.zipAllowExtra)
-      if ((entries.disks.length > 0) && (entries.extraUnknown.length == 0)) {
+      if (entries.disks.nonEmpty && entries.extraUnknown.isEmpty) {
         val normalizedDisks = entries.disks map { info =>
           val entry = info.entry
           val normalized = normalizeFilename(entry.getName)
@@ -96,7 +97,7 @@ object Normalizer {
                 collisions.forall(Files.exists(_))
               }
               catch {
-                case e: Throwable =>
+                case _: Throwable =>
                   false
               }
             }
@@ -118,7 +119,7 @@ object Normalizer {
           println(s"Archive[$path] is OK")
         }
       }
-      else if (entries.disks.length > 0) {
+      else if (entries.disks.nonEmpty) {
         println(s"Archive[$path] disk images[${entries.disks}] not processed due to extra files[${entries.extraUnknown}]")
       }
       else if (options.verbose > 0) {
@@ -215,7 +216,7 @@ object Normalizer {
     }
   }
 
-  def normalizeFilename(name: String) = {
+  def normalizeFilename(name: String): String = {
     val diskName = PathsEx.atomicName(name)
     val extension = PathsEx.extension(name).toLowerCase
     val formatter = nameFormatter(diskName)
@@ -226,7 +227,7 @@ object Normalizer {
     normalized
   }
 
-  def nameFormatter(name: String) =
+  def nameFormatter(name: String): DiskNameFormatter =
     Settings.core.diskNameFormatters.find { formatter =>
       formatter.matches(name)
     }.getOrElse(DiskNameFormatter.lowerCase)

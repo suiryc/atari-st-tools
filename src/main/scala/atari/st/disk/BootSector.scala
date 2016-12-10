@@ -16,11 +16,11 @@ case class BootSector(
   override def toString: String =
     s"BootSector($bytesPerSector,$sectors,$sectorsPerTrack,$sides,$checksum)"
 
-  val tracks =
+  val tracks: Int =
     if ((sectorsPerTrack <= 0) || (sides <= 0)) -1
     else sectors / (sectorsPerTrack * sides)
 
-  val checksum = {
+  val checksum: String = {
     val input = new ByteArrayInputStream(data)
     val msgDigest = MessageDigest.getInstance("MD5")
 

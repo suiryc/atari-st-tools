@@ -28,14 +28,14 @@ class MSAInputDisk(input: InputStream) {
   if (dis.readUnsignedShort() != magicHeader)
     throw new InvalidFormatException("Invalid magic number")
 
-  val sectorsPerTrack = dis.readUnsignedShort()
+  val sectorsPerTrack: Int = dis.readUnsignedShort()
   protected val trackSize = sectorsPerTrack * DiskFormat.bytesPerSector
-  val sides = dis.readUnsignedShort() + 1
-  val trackStart = dis.readUnsignedShort()
-  val trackEnd = dis.readUnsignedShort()
-  val tracks = trackEnd - trackStart + 1
-  val sectors = sectorsPerTrack * tracks * sides
-  val size = sectors * DiskFormat.bytesPerSector
+  val sides: Int = dis.readUnsignedShort() + 1
+  val trackStart: Int = dis.readUnsignedShort()
+  val trackEnd: Int = dis.readUnsignedShort()
+  val tracks: Int = trackEnd - trackStart + 1
+  val sectors: Int = sectorsPerTrack * tracks * sides
+  val size: Int = sectors * DiskFormat.bytesPerSector
 
   val filtered = new FilterInputStream(dis) {
 
@@ -126,7 +126,7 @@ class MSAInputDisk(input: InputStream) {
         r
       }
 
-    override def read(buf: Array[Byte], off: Int, len: Int) = {
+    override def read(buf: Array[Byte], off: Int, len: Int): Int = {
 
       @scala.annotation.tailrec
       def loop(off: Int, len: Int): Int =
@@ -145,14 +145,14 @@ class MSAInputDisk(input: InputStream) {
       else len - loop(off, len)
     }
 
-    override def skip(len: Long) = {
+    override def skip(len: Long): Long = {
       val buffer = new Array[Byte](1024)
 
       @scala.annotation.tailrec
       def loop(remaining: Long): Long =
         if (remaining <= 0) remaining
         else {
-          val len = scala.math.min(remaining, buffer.length).intValue()
+          val len = scala.math.min(remaining, buffer.length.toLong).intValue()
           val actual = read(buffer, 0, len)
           if (actual == -1) remaining
           else loop(remaining - actual)

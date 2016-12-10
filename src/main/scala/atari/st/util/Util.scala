@@ -11,7 +11,7 @@ object Util {
         if (n == 0) path.getFileName.toString
         else {
           val nameSplit = path.getFileName.toString.split("""\.""").toList
-          ((nameSplit(0) + s"-$n") :: nameSplit.tail).mkString(".")
+          ((nameSplit.head + s"-$n") :: nameSplit.tail).mkString(".")
         }
       val target = path.resolveSibling(name)
       if (!target.toFile.exists) target

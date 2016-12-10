@@ -2,7 +2,7 @@ package atari.st.disk
 
 
 case class Duplicates(preferred: Disk, others: List[Disk], excluded: List[Disk]) {
-  lazy val disks = preferred :: others ::: excluded
+  lazy val disks: List[Disk] = preferred :: others ::: excluded
 }
 
 object DuplicateStatus extends Enumeration {
@@ -17,7 +17,7 @@ class ByNameDuplicates(
   val dropped: Set[String]
 ) {
 
-  val known = kept ++ dropped
+  val known: Set[String] = kept ++ dropped
 
   def status(checksum: String): DuplicateStatus.Value =
     if (kept.contains(checksum)) DuplicateStatus.keep

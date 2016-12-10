@@ -29,7 +29,7 @@ object Zip {
      */
     Stream(0, 4).map { offset =>
       val buffered = new BufferedInputStream(new FileInputStream(path.toFile))
-      buffered.skip(offset)
+      buffered.skip(offset.toLong)
       val input = new ZipInputStream(buffered)
       val firstEntry = input.getNextEntry
       (input, firstEntry)
@@ -114,6 +114,7 @@ object Zip {
 
     /* Delete source file */
     path.toFile.delete()
+    ()
   }
 
 }

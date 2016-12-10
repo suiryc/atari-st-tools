@@ -9,14 +9,14 @@ import java.io.{ByteArrayInputStream, InputStream}
 
 class DiskImage(val data: Array[Byte], val info: DiskInfo) {
 
-  def inputStream =
+  def inputStream: ByteArrayInputStream =
     DiskImage.dataToStream(data)
 
 }
 
 object DiskImage {
 
-  def loadImage(input: InputStream, size: Int) = {
+  def loadImage(input: InputStream, size: Int): Array[Byte] = {
     val data = new Array[Byte](size)
 
     @scala.annotation.tailrec

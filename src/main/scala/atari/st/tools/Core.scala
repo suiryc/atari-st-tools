@@ -1,15 +1,11 @@
 package atari.st.tools
 
 import atari.st.DiskTools
-import atari.st.disk.{
-  Disk,
-  DiskInfo,
-  Duplicates,
-  StandardDiskFormat,
-  UnknownDiskFormat
-}
+import atari.st.DiskTools.AppOptions
+import atari.st.disk.{Disk, DiskInfo, Duplicates, StandardDiskFormat, UnknownDiskFormat}
 import atari.st.disk.exceptions.NoDiskInZipException
 import atari.st.settings.Settings
+import java.nio.charset.Charset
 import java.nio.file.{Files, Path}
 import scala.collection.mutable
 import suiryc.scala.io.{PathFinder, PathsEx}
@@ -18,15 +14,15 @@ import suiryc.scala.io.NameFilter._
 
 object Core {
 
-  val options = DiskTools.options
-  implicit val charset = options.zipCharset
+  val options: AppOptions = DiskTools.options
+  implicit val charset: Charset = options.zipCharset
 
   /* XXX - use checksum of full disk without disk serial number ?
    *   to find more possible duplicates with different names
    *   to more easily handle by-name duplicates cases ?
    */
-  val diskChecksums = mutable.Map[String, Duplicates]()
-  val diskNames = mutable.Map[String, List[Disk]]()
+  val diskChecksums: mutable.Map[String, Duplicates] = mutable.Map()
+  val diskNames: mutable.Map[String, List[Disk]] = mutable.Map()
 
   val knownNames = """(?i).*\.(?:st|msa|zip)"""
 
@@ -36,6 +32,7 @@ object Core {
         sortDuplicates(duplicates.disks :+ disk)
       }.getOrElse(Duplicates(disk, Nil, Nil))
     map.put(key, duplicates)
+    ()
   }
 
   def findFiles[T](process: (Path, Path, List[Path]) => T): List[T] =
@@ -167,7 +164,7 @@ object Core {
           }
           else pointsRef
 
-        case format: UnknownDiskFormat =>
+        case _: UnknownDiskFormat =>
           0
       }
 

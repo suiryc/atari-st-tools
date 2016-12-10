@@ -46,19 +46,19 @@ object Deduplicator {
      * If status is unsure, disk is not moved.
      */
 
-    def isUnsure =
+    def isUnsure: Boolean =
       status == DuplicateStatus.unsure
 
   }
 
   /* Already decided duplicates (by checksum). */
-  val decided = mutable.Map[String, DeduplicationInfo]()
+  val decided: mutable.Map[String, DeduplicationInfo] = mutable.Map()
 
   def deduplicate(inspect: Boolean) {
     findDuplicates()
 
     diskChecksums.toList sortBy(_._2.preferred.info.normalizedName) foreach { tuple =>
-      val checksum = tuple._1
+      //val checksum = tuple._1
       val duplicates = tuple._2
       val preferred = duplicates.preferred
 
@@ -160,7 +160,7 @@ object Deduplicator {
           val unsure =
             unsureChecksums.toList.map(diskChecksums(_).preferred)
 
-          if (unsure.size > 0)
+          if (unsure.nonEmpty)
             decideByChecksum(DeduplicationInfo(DuplicateStatus.unsure, unsure = unsure))
           else
             decided(checksum) = DeduplicationInfo(DuplicateStatus.keep)
@@ -203,7 +203,7 @@ object Deduplicator {
             else
               (Nil, otherImages)
 
-          if (unsure.size > 0) {
+          if (unsure.nonEmpty) {
             val diskDedupInfo = dedupInfo.copy(unsure = unsure)
             disks foreach { disk =>
               val diskChecksum = disk.info.checksum
@@ -284,7 +284,7 @@ object Deduplicator {
         else
           (Nil, differentChecksum)
 
-      if (unsure.size > 0) {
+      if (unsure.nonEmpty) {
         if (options.duplicateAllowAlternatives && (unsure.size == 1) && folderIsAlternative(duplicates.preferred)) {
           /* We are an 'alternative' and there is actually only one 'preferred'
            * disk. */

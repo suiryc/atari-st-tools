@@ -10,7 +10,7 @@ extends InputStream
 
   private var eof = false
 
-  @inline private def doAndEOF[T](f: => T, ifEOF: T = Unit): T =
+  @inline private def doAndEOF[T](f: => T, ifEOF: T = ()): T =
     if (eof) ifEOF
     else {
       val r = f
@@ -24,13 +24,13 @@ extends InputStream
   override def read(): Int =
     doAndEOF(zip.read(), -1)
 
-  override def read(b: Array[Byte], off: Int, len: Int) =
+  override def read(b: Array[Byte], off: Int, len: Int): Int =
     doAndEOF(zip.read(b, off, len), -1)
 
-  override def skip(n: Long) =
+  override def skip(n: Long): Long =
     doAndEOF(zip.skip(n), 0)
 
-  override def close() =
+  override def close(): Unit =
     doAndEOF(zip.closeEntry())
 
 }

@@ -3,12 +3,12 @@ import Keys._
 
 lazy val versions = Map[String, String](
   "atari-st-tools" -> "0.0.2-SNAPSHOT",
-  "config"         -> "1.3.0",
-  "grizzled"       -> "1.0.2",
-  "logback"        -> "1.1.3",
-  "scala"          -> "2.11.7",
-  "scopt"          -> "3.2.0",
-  "slf4j"          -> "1.7.13",
+  "config"         -> "1.3.1",
+  "grizzled"       -> "1.3.0",
+  "logback"        -> "1.1.8",
+  "scala"          -> "2.12.1",
+  "scopt"          -> "3.5.0",
+  "slf4j"          -> "1.7.21",
   "suiryc-scala"   -> "0.0.2-SNAPSHOT"
 )
 
@@ -22,17 +22,24 @@ lazy val atariStTools = project.in(file(".")).
 
     scalacOptions ++= Seq(
       "-deprecation",
+      "-encoding", "UTF-8",
       "-feature",
-      "-optimize",
       "-unchecked",
-      "-Yinline-warnings"
+      "-Xfatal-warnings",
+      "-Xlint",
+      "-Yno-adapted-args",
+      "-Ywarn-numeric-widen",
+      "-Ywarn-value-discard",
+      "-Ywarn-inaccessible",
+      "-Ywarn-infer-any",
+      "-Ywarn-dead-code",
+      "-Ywarn-nullary-override",
+      "-Ywarn-nullary-unit",
+      "-Ywarn-unused",
+      "-Ywarn-unused-import"
     ),
     scalacOptions in (Compile, doc) ++= Seq("-diagrams", "-implicits"),
-    resolvers ++= Seq(
-      Resolver.mavenLocal,
-      "spray repo" at "http://repo.spray.io/",
-      "spray nightly repo" at "http://nightlies.spray.io"
-    ),
+    resolvers += Resolver.mavenLocal,
 
     libraryDependencies ++= Seq(
       "ch.qos.logback"   %  "logback-classic"   % versions("logback"),

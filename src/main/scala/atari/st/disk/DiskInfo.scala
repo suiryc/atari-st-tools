@@ -36,12 +36,12 @@ case class DiskInfo(
   override def toString: String =
     s"DiskInfo($path,$name,$checksum,$checksum2,$format,$bootSector,${times.lastModified})"
 
-  val atomicName = PathsEx.atomicName(name)
+  val atomicName: String = PathsEx.atomicName(name)
 
-  val nameFormatter =
+  val nameFormatter: Option[RegexDiskNameFormatter] =
     DiskInfo.nameFormatter(atomicName)
 
-  val normalizedName = {
+  val normalizedName: String = {
     val formatter =
       nameFormatter.getOrElse(DiskNameFormatter.lowerCase)
 
@@ -65,21 +65,21 @@ case class DiskInfo(
     }
 
     if (PathsEx.extension(path).toLowerCase == "zip") {
-      import scala.collection.JavaConversions._
+      import scala.collection.JavaConverters._
 
       val zip = new ZipFile(path.toFile, zipCharset)
-      val entry = zip.entries().toList.find(_.getName == name).get
+      val entry = zip.entries().asScala.toList.find(_.getName == name).get
       zip.close()
-      Zip.unzip(path, { (_entry, input) =>
+      Zip.unzip[Option[DiskImage]](path, { (_entry, input) =>
         /* Continue until we find the entry */
         val found = _entry.getName == entry.getName
         val value =
           if (found) Some(build(input))
           else None
         (value, !found)
-      }) collectFirst {
+      }).collectFirst {
         case Some(disk) => disk
-      } getOrElse {
+      }.getOrElse {
         val ex = new ZipException("ZipFile/ZipInputStream mismatch")
         ex.initCause(new Exception(s"Missing entry: ${entry.getName}"))
         throw ex
@@ -150,16 +150,16 @@ object DiskInfo {
               Left(new Exception("Unknown disk type"))
 
             case t =>
-              Zip.unzip(path, { (_entry, input) =>
+              Zip.unzip[Option[Either[Exception, DiskInfo]]](path, { (_entry, input) =>
                 /* Continue until we find the entry */
                 val found = _entry.getName == entry.getName
                 val value =
                   if (found) Some(build(entry.getName, t, FileTimes(entry), input, entry.getSize.intValue()))
                   else None
                 (value, !found)
-              }) collectFirst {
+              }).collectFirst {
                 case Some(r) => r
-              } getOrElse {
+              }.getOrElse {
                 val ex = new ZipException("ZipFile/ZipInputStream mismatch")
                 ex.initCause(new Exception(s"Missing entry: ${entry.getName}"))
                 Left(ex)
@@ -189,9 +189,9 @@ object DiskInfo {
   case class ZipEntries(count: Int, disks: List[ZipEntryType], extraAllowed: List[ZipEntry], extraUnknown: List[ZipEntry])
 
   def zipEntries(zip: ZipFile, zipAllowDiskName: Boolean, zipAllowExtra: List[Regex]): ZipEntries = {
-    import scala.collection.JavaConversions._
+    import scala.collection.JavaConverters._
 
-    val tuples = zip.entries().toList filterNot(_.isDirectory) sortBy(_.getName.toLowerCase) map { entry =>
+    val tuples = zip.entries().asScala.toList filterNot(_.isDirectory) sortBy(_.getName.toLowerCase) map { entry =>
       (entry, imageType(PathsEx.extension(entry.getName)))
     }
     val (knownTuples, otherTuples) = tuples.partition(_._2 != DiskType.Unknown)
@@ -211,7 +211,7 @@ object DiskInfo {
     ZipEntries(tuples.length, disks, extraAllowed, extraUnknown)
   }
 
-  def nameFormatter(name: String) =
+  def nameFormatter(name: String): Option[RegexDiskNameFormatter] =
     Settings.core.diskNameFormatters find { formatter =>
       formatter.matches(name)
     }
